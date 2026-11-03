@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 38 33% 97%; /* #FAF8F5 warm ivory */
+    --foreground: 154 28% 14%; /* #1A3A2A deep forest */
+
+    --card: 40 40% 99%;
+    --card-foreground: 154 28% 14%;
+
+    --popover: 40 40% 99%;
+    --popover-foreground: 154 28% 14%;
+
+    --primary: 150 38% 16%; /* #1A3A2A deep forest green */
+    --primary-foreground: 40 33% 98%;
+
+    --secondary: 35 25% 91%; /* warm light sand */
+    --secondary-foreground: 150 38% 16%;
+
+    --muted: 36 20% 92%;
+    --muted-foreground: 150 12% 40%;
+
+    --accent: 14 54% 53%; /* #C86446 muted terracotta */
+    --accent-foreground: 40 33% 98%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 36 18% 87%; /* refined warm border */
+    --input: 36 18% 87%;
+    --ring: 150 38% 16%;
+
+    --radius: 0.625rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background-color: #faf8f5;
+    background-image: radial-gradient(#e5dfd3 0.75px, transparent 0.75px);
+    background-size: 24px 24px;
+  }
+  h1, h2, h3, .font-serif {
+    font-family: 'Playfair Display', Georgia, Cambria, 'Times New Roman', serif;
+    letter-spacing: -0.015em;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1ede4;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1c8b8;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b5a995;
+}

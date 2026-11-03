@@ -1,0 +1,22 @@
+{
+  "name": "eventora",
+  "private": true,
+  "packageManager": "npm@11.20.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "dev:api": "turbo run dev --filter=@eventora/api",
+    "dev:web": "turbo run dev --filter=@eventora/web",
+    "db:migrate": "npm run db:migrate --workspace=apps/api",
+    "db:migrate:dev": "npm run db:migrate:dev --workspace=apps/api",
+    "db:seed": "npm run db:seed --workspace=apps/api",
+    "db:generate": "npm run db:generate --workspace=apps/api",
+    "test": "npm run test --workspace=apps/api",
+    "lint": "npm run lint --workspace=apps/web"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.5"
+  }
+}
