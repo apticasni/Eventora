@@ -39,6 +39,15 @@ Create a Render Web Service from this repository and use the included `render.ya
 Blueprint. It builds the shared package and API, starts the Express service, and
 checks `/health`. Set the prompted secret values in Render's environment settings:
 
+For an existing service configured manually rather than from the Blueprint, also
+set these values in the Render Dashboard; editing `render.yaml` does not update a
+manually configured service. Remove any manually configured `SKIP_INSTALL_DEPS`
+variable; Render documents it for Static Sites, not Web Services:
+
+- Root Directory: `.`
+- Build Command: `npm ci && npm run build --workspace=@eventora/shared && npm run build --workspace=@eventora/api`
+- Start Command: `npm run start --workspace=@eventora/api`
+
 - `DATABASE_URL`: Neon direct PostgreSQL connection string.
 - `JWT_SECRET`: unique random secret, at least 32 characters.
 - `FRONTEND_URL`: exact Vercel production origin, for example

@@ -11,8 +11,6 @@ services:
         value: 22
       - key: NODE_ENV
         value: production
-      - key: SKIP_INSTALL_DEPS
-        value: "true"
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
