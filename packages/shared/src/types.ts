@@ -14,6 +14,7 @@ export interface User {
   role: Role;
   avatar?: string | null;
   bio?: string | null;
+  phone?: string | null;
   interests: string[];
   googleId?: string | null;
   isVerified: boolean;

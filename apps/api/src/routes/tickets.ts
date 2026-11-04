@@ -2,7 +2,8 @@ import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
-import { Prisma } from '@prisma/client';
+import { z } from 'zod';
+import { checkInTicket } from '../services/checkIn';
 
 export const ticketsRouter = Router();
 
@@ -48,40 +49,16 @@ ticketsRouter.get('/:code', requireAuth, async (req: AuthRequest, res: Response,
 
 ticketsRouter.post('/:code/checkin', requireAuth, requireRole('ADMIN', 'ORGANIZER'), async (req: AuthRequest, res: Response, next) => {
   try {
-    const ticket = await prisma.ticket.findUnique({
-      where: { code: req.params.code },
-      include: { booking: { include: { event: true, user: { select: { name: true, email: true, avatar: true } } } } },
+    const input = z.object({ method: z.enum(['QR', 'Manual']).default('QR') }).safeParse(req.body || {});
+    if (!input.success) throw new AppError(400, 'Check-in method must be QR or Manual.');
+    const result = await checkInTicket(req.params.code, {
+      id: req.user!.userId,
+      role: req.user!.role,
+    }, input.data.method);
+    res.json({
+      success: true,
+      data: result,
+      message: result.status === 'checked_in' ? 'Check-in successful!' : 'Ticket could not be checked in.',
     });
-    if (!ticket) throw new AppError(404, 'Ticket not found.');
-    if (ticket.isCheckedIn) throw new AppError(400, 'Ticket has already been checked in.');
-    if (ticket.booking.status !== 'CONFIRMED') throw new AppError(400, 'Booking is not confirmed.');
-
-    const isAdmin = req.user!.role === 'ADMIN';
-    const isOrganizer = ticket.booking.event.organizerId === req.user!.userId;
-    if (!isAdmin && !isOrganizer) throw new AppError(403, 'You can only check in attendees for your own events.');
-
-    try {
-      const checkIn = await prisma.$transaction(async (tx) => {
-        const locked = await tx.ticket.findUnique({ where: { id: ticket.id } });
-        if (!locked || locked.isCheckedIn) throw new AppError(400, 'Ticket has already been checked in.');
-        await tx.ticket.update({ where: { id: ticket.id }, data: { isCheckedIn: true } });
-        return tx.checkIn.create({
-          data: {
-            ticketId: ticket.id,
-            eventId: ticket.booking.eventId,
-            staffId: req.user!.userId,
-            method: req.body.method || 'QR',
-          },
-          include: { staff: { select: { name: true } } },
-        });
-      });
-
-      res.json({ success: true, data: { ticket, checkIn }, message: 'Check-in successful!' });
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new AppError(400, 'Ticket has already been checked in.');
-      }
-      throw err;
-    }
   } catch (err) { next(err); }
 });

@@ -5,6 +5,7 @@ import { validateBody, validateQuery } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { CreateEventSchema, UpdateEventSchema, SearchEventsSchema } from '@eventora/shared';
 import { resolveIsFree } from '../lib/eventPricing';
+import { Prisma } from '@prisma/client';
 
 export const eventsRouter = Router();
 
@@ -19,8 +20,8 @@ const eventSelect = {
   isFeatured: true, viewCount: true, createdAt: true, updatedAt: true,
   category: { select: { id: true, name: true, slug: true, icon: true, color: true } },
   organizer: { select: { id: true, name: true, avatar: true, bio: true } },
-  _count: { select: { reviews: true, bookings: true } },
-};
+  _count: { select: { reviews: { where: { moderationStatus: 'PUBLISHED' } }, bookings: true } },
+} satisfies Prisma.EventSelect;
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') +
@@ -30,7 +31,7 @@ function slugify(text: string): string {
 // GET /api/events
 eventsRouter.get('/', optionalAuth, validateQuery(SearchEventsSchema), async (req: AuthRequest, res: Response, next) => {
   try {
-    const { q, category, format, city, isFree, minPrice, maxPrice, startDate, endDate, sortBy, page, limit, status } = req.query as Record<string, string>;
+    const { q, category, format, city, isFree, minPrice, maxPrice, startDate, endDate, available, sortBy, page, limit, status } = req.query as Record<string, string>;
     const skip = (parseInt(page || '1') - 1) * parseInt(limit || '12');
     const take = parseInt(limit || '12');
 
@@ -51,11 +52,21 @@ eventsRouter.get('/', optionalAuth, validateQuery(SearchEventsSchema), async (re
     if (category) where.category = { slug: category };
     if (format) where.format = format;
     if (city) where.city = { contains: city, mode: 'insensitive' };
-    if (isFree === 'true') where.isFree = true;
+    if (isFree === 'true' || isFree === 'false') where.isFree = isFree === 'true';
     if (minPrice) where.price = { ...((where.price as object) || {}), gte: parseFloat(minPrice) };
     if (maxPrice) where.price = { ...((where.price as object) || {}), lte: parseFloat(maxPrice) };
     if (startDate) where.startDate = { gte: new Date(startDate) };
-    if (endDate) where.endDate = { ...((where.endDate as object) || {}), lte: new Date(endDate) };
+    if (endDate) {
+      const inclusiveEndDate = new Date(endDate);
+      inclusiveEndDate.setUTCHours(23, 59, 59, 999);
+      where.endDate = { ...((where.endDate as object) || {}), lte: inclusiveEndDate };
+    }
+    if (available === 'true') {
+      const availableEventIds = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Event" WHERE "bookedSeats" < "totalCapacity"
+      `;
+      where.id = { in: availableEventIds.map(({ id }) => id) };
+    }
 
     const orderBy: Record<string, unknown> =
       sortBy === 'popularity' ? { bookedSeats: 'desc' } :
@@ -114,6 +125,7 @@ eventsRouter.get('/:slug', optionalAuth, async (req: AuthRequest, res: Response,
       select: {
         ...eventSelect,
         reviews: {
+          where: { moderationStatus: 'PUBLISHED' },
           take: 10,
           orderBy: { createdAt: 'desc' },
           select: {
@@ -177,14 +189,50 @@ eventsRouter.put('/:id', requireAuth, requireRole('ORGANIZER', 'ADMIN'), validat
     if (req.user!.role !== 'ADMIN' && event.organizerId !== req.user!.userId) throw new AppError(403, 'Not authorized.');
 
     const { isFeatured, ...rest } = req.body;
-    const updated = await prisma.event.update({
-      where: { id },
-      data: {
-        ...rest,
-        isFree: resolveIsFree(event.isFree, { price: req.body.price, isFree: req.body.isFree }),
-        ...(req.user!.role === 'ADMIN' ? { isFeatured } : {}),
-      },
-      select: eventSelect,
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.event.findUnique({ where: { id } });
+      if (!current) throw new AppError(404, 'Event not found.');
+      const changedEventFields = ['title', 'startDate', 'endDate', 'venueName', 'venueAddress', 'city', 'format', 'status']
+        .filter((field) => {
+          const nextValue = req.body[field];
+          if (nextValue === undefined) return false;
+          const previousValue = current[field as keyof typeof current];
+          if (field === 'startDate' || field === 'endDate') {
+            return new Date(nextValue).getTime() !== (previousValue as Date).getTime();
+          }
+          return nextValue !== previousValue;
+        });
+      const savedEvent = await tx.event.update({
+        where: { id },
+        data: {
+          ...rest,
+          isFree: resolveIsFree(current.isFree, { price: req.body.price, isFree: req.body.isFree }),
+          ...(req.user!.role === 'ADMIN' ? { isFeatured } : {}),
+        },
+        select: eventSelect,
+      });
+      if (changedEventFields.length > 0) {
+        const attendees = await tx.booking.findMany({
+          where: { eventId: id, status: 'CONFIRMED' },
+          select: { userId: true },
+          distinct: ['userId'],
+        });
+        if (attendees.length > 0) {
+          await tx.inAppNotification.createMany({
+            data: attendees.map(({ userId }) => ({
+              userId,
+              type: 'EVENT_UPDATED',
+              title: 'Event details updated',
+              message: `${savedEvent.title} has new event details. Review the latest information before attending.`,
+              link: `/events/${savedEvent.slug}`,
+              eventId: savedEvent.id,
+              key: `event-update:${savedEvent.id}:${savedEvent.updatedAt.toISOString()}`,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+      return savedEvent;
     });
     res.json({ success: true, data: { ...updated, availableSeats: updated.totalCapacity - updated.bookedSeats } });
   } catch (err) { next(err); }

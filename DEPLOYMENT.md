@@ -53,11 +53,32 @@ variable; Render documents it for Static Sites, not Web Services:
 - `FRONTEND_URL`: exact Vercel production origin, for example
   `https://<your-app>.vercel.app` (no trailing slash). Comma-separated exact
   origins are supported when additional trusted origins are needed.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`: Google OAuth
+  web application credentials. The callback must be
+  `https://<your-api>.onrender.com/api/auth/google/callback`. The client secret
+  belongs only in Render, never in Vercel or frontend code. The callback URL
+  must match that exact API route; local development may use HTTP.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`:
+  optional SMTP settings for transactional notifications. Set host, port,
+  username, and password together. Gmail requires an App Password and the
+  authenticated Gmail address as `EMAIL_FROM`.
 - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`: Razorpay
   **Test Mode** values.
 
 Render supplies `PORT`. Do not add secrets to the Blueprint or commit `.env` files.
 The API health check also verifies its PostgreSQL connection.
+
+### Google OAuth setup
+
+In Google Cloud Console, configure an OAuth consent screen and create an OAuth
+2.0 **Web application** client. Add the deployed API callback URL above as an
+authorized redirect URI. Store the resulting client ID, client secret, and
+callback URL only in Render environment variables. The API uses authorization
+code flow, state validation, PKCE, and verified Google email claims. New Google
+accounts receive the `ATTENDEE` role; existing users retain their current role.
+
+For local development, create a separate OAuth client and set its callback to
+the local API callback shown in `apps/api/.env.example`.
 
 ## Vercel frontend
 

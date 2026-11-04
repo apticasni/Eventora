@@ -3,7 +3,7 @@ import type { ApiResponse, Event, PaginatedResponse } from '@eventora/shared';
 export type EventsDiscoveryState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'success'; events: Event[] };
+  | { status: 'success'; events: Event[]; total: number; page: number; totalPages: number };
 
 export const initialEventsDiscoveryState: EventsDiscoveryState = { status: 'loading' };
 
@@ -24,5 +24,11 @@ export function eventsDiscoveryStateFromResponse(
     };
   }
 
-  return { status: 'success', events: response.data.items };
+  return {
+    status: 'success',
+    events: response.data.items,
+    total: response.data.total,
+    page: response.data.page,
+    totalPages: response.data.totalPages,
+  };
 }

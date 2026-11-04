@@ -4,6 +4,8 @@ import { requireAuth, requireRole, AuthRequest } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { CreateProposalSchema, UpdateProposalSchema } from '@eventora/shared';
+import { z } from 'zod';
+import { writeAuditLog } from '../services/auditLog';
 
 export const proposalsRouter = Router();
 
@@ -56,59 +58,83 @@ proposalsRouter.put('/:id', requireAuth, requireRole('ORGANIZER', 'ADMIN'), vali
 // POST /api/proposals/:id/approve (admin)
 proposalsRouter.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req: AuthRequest, res: Response, next) => {
   try {
-    const proposal = await prisma.proposal.findUnique({
-      where: { id: req.params.id },
-      include: { organizer: true },
+    const input = z.object({ adminNotes: z.string().trim().min(8).max(500) }).safeParse(req.body);
+    if (!input.success) throw new AppError(400, 'An approval reason of at least 8 characters is required.');
+
+    const result = await prisma.$transaction(async (tx) => {
+      const proposal = await tx.proposal.findUnique({ where: { id: req.params.id } });
+      if (!proposal) throw new AppError(404, 'Proposal not found.');
+      if (proposal.status !== 'PENDING') throw new AppError(409, 'Proposal is no longer pending.');
+
+      let category = await tx.category.findFirst({ where: { name: { equals: proposal.category, mode: 'insensitive' } } });
+      if (!category) {
+        const baseSlug = proposal.category.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        category = await tx.category.create({ data: { name: proposal.category, slug: `${baseSlug}-${Date.now().toString(36)}` } });
+      }
+
+      const slug = `${proposal.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${Date.now().toString(36)}`;
+      const startDate = proposal.proposedDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const event = await tx.event.create({
+        data: {
+          title: proposal.title,
+          slug,
+          description: proposal.description,
+          categoryId: category.id,
+          organizerId: proposal.organizerId,
+          format: proposal.format,
+          startDate,
+          endDate: new Date(startDate.getTime() + 3 * 60 * 60 * 1000),
+          totalCapacity: proposal.estimatedCapacity || 50,
+          price: proposal.price || 0,
+          isFree: !proposal.price || proposal.price === 0,
+          status: 'DRAFT',
+          proposalId: proposal.id,
+        },
+      });
+
+      const updatedProposal = await tx.proposal.update({
+        where: { id: proposal.id },
+        data: { status: 'APPROVED', adminNotes: input.data.adminNotes },
+      });
+      await writeAuditLog(tx, {
+        actorId: req.user!.userId,
+        action: 'PROPOSAL_APPROVED',
+        entityType: 'Proposal',
+        entityId: proposal.id,
+        reason: input.data.adminNotes,
+        beforeData: { status: proposal.status },
+        afterData: { status: updatedProposal.status, eventId: event.id },
+      });
+      return { proposal: updatedProposal, event };
     });
-    if (!proposal) throw new AppError(404, 'Proposal not found.');
-    if (proposal.status !== 'PENDING') throw new AppError(400, 'Proposal is not pending.');
 
-    // Find category
-    let category = await prisma.category.findFirst({ where: { name: { equals: proposal.category, mode: 'insensitive' } } });
-    if (!category) {
-      const slug = proposal.category.toLowerCase().replace(/\s+/g, '-');
-      category = await prisma.category.create({ data: { name: proposal.category, slug } });
-    }
-
-    const slug = proposal.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Math.random().toString(36).slice(2, 6);
-
-    const event = await prisma.event.create({
-      data: {
-        title: proposal.title,
-        slug,
-        description: proposal.description,
-        categoryId: category.id,
-        organizerId: proposal.organizerId,
-        format: proposal.format,
-        startDate: proposal.proposedDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        endDate: proposal.proposedDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        totalCapacity: proposal.estimatedCapacity || 50,
-        price: proposal.price || 0,
-        isFree: !proposal.price || proposal.price === 0,
-        status: 'DRAFT',
-        proposalId: proposal.id,
-      },
-    });
-
-    await prisma.proposal.update({
-      where: { id: proposal.id },
-      data: { status: 'APPROVED', adminNotes: req.body.adminNotes },
-    });
-
-    res.json({ success: true, data: { proposal, event }, message: 'Proposal approved. Draft event created.' });
+    res.json({ success: true, data: result, message: 'Proposal approved. Draft event created.' });
   } catch (err) { next(err); }
 });
 
 // POST /api/proposals/:id/reject (admin)
-proposalsRouter.post('/:id/reject', requireAuth, requireRole('ADMIN'), async (req, res: Response, next) => {
+proposalsRouter.post('/:id/reject', requireAuth, requireRole('ADMIN'), async (req: AuthRequest, res: Response, next) => {
   try {
-    const { rejectionReason } = req.body;
-    if (!rejectionReason) throw new AppError(400, 'Rejection reason is required.');
-    const proposal = await prisma.proposal.findUnique({ where: { id: req.params.id } });
-    if (!proposal) throw new AppError(404, 'Proposal not found.');
-    const updated = await prisma.proposal.update({
-      where: { id: req.params.id },
-      data: { status: 'REJECTED', rejectionReason },
+    const input = z.object({ rejectionReason: z.string().trim().min(8).max(500) }).safeParse(req.body);
+    if (!input.success) throw new AppError(400, 'A rejection reason of at least 8 characters is required.');
+    const updated = await prisma.$transaction(async (tx) => {
+      const proposal = await tx.proposal.findUnique({ where: { id: req.params.id } });
+      if (!proposal) throw new AppError(404, 'Proposal not found.');
+      if (proposal.status !== 'PENDING') throw new AppError(409, 'Proposal is no longer pending.');
+      const result = await tx.proposal.update({
+        where: { id: proposal.id },
+        data: { status: 'REJECTED', rejectionReason: input.data.rejectionReason },
+      });
+      await writeAuditLog(tx, {
+        actorId: req.user!.userId,
+        action: 'PROPOSAL_REJECTED',
+        entityType: 'Proposal',
+        entityId: proposal.id,
+        reason: input.data.rejectionReason,
+        beforeData: { status: proposal.status },
+        afterData: { status: result.status },
+      });
+      return result;
     });
     res.json({ success: true, data: updated, message: 'Proposal rejected.' });
   } catch (err) { next(err); }

@@ -24,6 +24,7 @@ export default function AttendeeBookingsPage() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bookingsLoadedAt, setBookingsLoadedAt] = useState(0);
   const [selectedTicket, setSelectedTicket] = useState<{
     code: string;
     eventTitle: string;
@@ -41,6 +42,7 @@ export default function AttendeeBookingsPage() {
         const res = await api.bookings.list();
         if (res.success && res.data) {
           setBookings(res.data);
+          setBookingsLoadedAt(Date.now());
         } else {
           setBookings([]);
         }
@@ -52,6 +54,18 @@ export default function AttendeeBookingsPage() {
     }
     loadBookings();
   }, []);
+
+  useEffect(() => {
+    if (!selectedTicket && !cancellingId) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedTicket(null);
+        setCancellingId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTicket, cancellingId]);
 
   const openTicketModal = async (ticket: any, eventTitle: string) => {
     try {
@@ -95,6 +109,12 @@ export default function AttendeeBookingsPage() {
     }
   };
 
+  const bookingSections = [
+    { title: 'Upcoming', bookings: bookings.filter((booking) => booking.status !== 'CANCELLED' && (!booking.event?.endDate || new Date(booking.event.endDate).getTime() > bookingsLoadedAt) && booking.event?.status !== 'COMPLETED') },
+    { title: 'Completed', bookings: bookings.filter((booking) => booking.status !== 'CANCELLED' && (booking.event?.status === 'COMPLETED' || (booking.event?.endDate && new Date(booking.event.endDate).getTime() <= bookingsLoadedAt))) },
+    { title: 'Cancelled', bookings: bookings.filter((booking) => booking.status === 'CANCELLED') },
+  ];
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Header */}
@@ -131,8 +151,12 @@ export default function AttendeeBookingsPage() {
           <div className="animate-spin w-8 h-8 border-4 border-forest border-t-transparent rounded-full mx-auto" />
         </div>
       ) : bookings.length > 0 ? (
-        <div className="space-y-6">
-          {bookings.map((booking) => (
+        <div className="space-y-10">
+          {bookingSections.map((section) => section.bookings.length > 0 && (
+            <section key={section.title} aria-labelledby={`bookings-${section.title.toLowerCase()}`}>
+              <h2 id={`bookings-${section.title.toLowerCase()}`} className="mb-4 font-serif text-2xl font-bold text-forest">{section.title}</h2>
+              <div className="space-y-6">
+          {section.bookings.map((booking) => (
             <div
               key={booking.id}
               className="bg-white rounded-3xl border border-[#ded7ca] p-6 sm:p-8 shadow-warm flex flex-col md:flex-row gap-6 justify-between items-start md:items-center"
@@ -215,6 +239,9 @@ export default function AttendeeBookingsPage() {
               </div>
             </div>
           ))}
+              </div>
+            </section>
+          ))}
         </div>
       ) : (
         <div className="bg-white rounded-3xl border border-[#ded7ca] p-16 text-center space-y-4 max-w-lg mx-auto shadow-sm">
@@ -235,13 +262,15 @@ export default function AttendeeBookingsPage() {
       {/* Ticket QR Modal */}
       {selectedTicket && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#faf8f5] rounded-3xl border border-[#ded7ca] p-8 max-w-sm w-full space-y-6 text-center shadow-warm-lg animate-in zoom-in-95 duration-150">
+          <div role="dialog" aria-modal="true" aria-labelledby="ticket-dialog-title" className="bg-[#faf8f5] rounded-3xl border border-[#ded7ca] p-8 max-w-sm w-full space-y-6 text-center shadow-warm-lg animate-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center">
               <span className="text-[10px] font-bold uppercase tracking-wider text-terracotta bg-terracotta/10 px-2.5 py-1 rounded-full">
                 Digital Entrance Pass
               </span>
               <button
+                type="button"
                 onClick={() => setSelectedTicket(null)}
+                aria-label="Close ticket"
                 className="text-[#8c8273] hover:text-forest"
               >
                 <X className="w-5 h-5" />
@@ -249,7 +278,7 @@ export default function AttendeeBookingsPage() {
             </div>
 
             <div>
-              <h4 className="font-serif text-xl font-bold text-forest leading-snug">
+              <h4 id="ticket-dialog-title" className="font-serif text-xl font-bold text-forest leading-snug">
                 {selectedTicket.eventTitle}
               </h4>
               <p className="text-xs text-[#71695d] mt-1 font-mono">
@@ -290,8 +319,8 @@ export default function AttendeeBookingsPage() {
       {/* Cancellation Confirmation Modal */}
       {cancellingId && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-[#ded7ca] p-6 max-w-md w-full space-y-4 shadow-warm-lg animate-in zoom-in-95">
-            <h3 className="font-serif text-xl font-bold text-forest">Cancel Booking?</h3>
+          <div role="dialog" aria-modal="true" aria-labelledby="cancel-dialog-title" className="bg-white rounded-3xl border border-[#ded7ca] p-6 max-w-md w-full space-y-4 shadow-warm-lg animate-in zoom-in-95">
+            <h3 id="cancel-dialog-title" className="font-serif text-xl font-bold text-forest">Cancel Booking?</h3>
             <p className="text-xs text-[#5c5446]">
               Cancelling your registration will immediately release your seats to the earliest waiting attendee on the FIFO waitlist.
             </p>

@@ -8,6 +8,7 @@ import { sendBookingConfirmation, sendTicketDetails, sendCancellationConfirmatio
 import { processWaitlist } from '../services/waitlist';
 import { issueTicketsIfMissing } from '../services/tickets';
 import { canAllocateSeats } from '../lib/razorpay';
+import { isEventRegistrationOpen } from '../lib/eventEligibility';
 
 export const bookingsRouter = Router();
 
@@ -39,14 +40,17 @@ bookingsRouter.post('/', requireAuth, validateBody(CreateBookingSchema), async (
 
     const result = await prisma.$transaction(async (tx) => {
       const events = await tx.$queryRaw<Array<{
-        id: string; total_capacity: number; booked_seats: number; price: number; is_free: boolean; status: string;
+        id: string; title: string; start_date: Date; total_capacity: number; booked_seats: number; price: number; is_free: boolean; status: string;
       }>>`
-        SELECT id, "totalCapacity" as total_capacity, "bookedSeats" as booked_seats, price, "isFree" as is_free, status
+        SELECT id, title, "startDate" as start_date, "totalCapacity" as total_capacity, "bookedSeats" as booked_seats, price, "isFree" as is_free, status
         FROM "Event" WHERE id = ${eventId} FOR UPDATE
       `;
       const event = events[0];
       if (!event) throw new AppError(404, 'Event not found.');
       if (event.status !== 'PUBLISHED') throw new AppError(400, 'This event is not open for registration.');
+      if (!isEventRegistrationOpen(event.status, event.start_date)) {
+        throw new AppError(400, 'Registration is closed for events that have started.');
+      }
 
       const existing = await tx.booking.findUnique({
         where: { userId_eventId: { userId, eventId } },
@@ -90,6 +94,17 @@ bookingsRouter.post('/', requireAuth, validateBody(CreateBookingSchema), async (
       let tickets: Awaited<ReturnType<typeof issueTicketsIfMissing>> = [];
       if (event.is_free) {
         tickets = await issueTicketsIfMissing(tx, booking);
+        await tx.inAppNotification.create({
+          data: {
+            userId,
+            type: 'REGISTRATION_CONFIRMED',
+            title: 'Registration confirmed',
+            message: `Your registration for ${event.title} is confirmed. Your ticket is ready.`,
+            link: '/dashboard/bookings',
+            eventId,
+            key: `booking-confirmed:${booking.id}:${booking.updatedAt.toISOString()}`,
+          },
+        });
       }
 
       return { booking, event, needsPayment: !event.is_free, totalAmount, tickets };
@@ -171,6 +186,17 @@ bookingsRouter.post('/:id/cancel', requireAuth, validateBody(CancelBookingSchema
           WHERE id = ${currentBooking.eventId}
         `;
       }
+      await tx.inAppNotification.create({
+        data: {
+          userId: currentBooking.userId,
+          type: 'REGISTRATION_CANCELLED',
+          title: 'Registration cancelled',
+          message: `Your registration for ${currentBooking.event.title} has been cancelled.`,
+          link: '/dashboard/bookings',
+          eventId: currentBooking.eventId,
+          key: `booking-cancelled:${currentBooking.id}:${cancelledBooking.updatedAt.toISOString()}`,
+        },
+      });
       return { ...currentBooking, ...cancelledBooking, shouldReleaseSeats };
     });
 

@@ -2,8 +2,7 @@ import React from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/hooks/useAuth';
-import { Navbar } from '@/components/layout/Navbar';
-import { Footer } from '@/components/layout/Footer';
+import { SiteChrome } from '@/components/layout/SiteChrome';
 
 export const metadata: Metadata = {
   title: 'Eventora — Discover. Connect. Experience.',
@@ -29,9 +28,7 @@ export default function RootLayout({
       </head>
       <body className="flex flex-col min-h-screen text-[#1A3A2A]">
         <AuthProvider>
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <SiteChrome>{children}</SiteChrome>
         </AuthProvider>
       </body>
     </html>
