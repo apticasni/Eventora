@@ -1,6 +1,7 @@
 import {
   User,
   Event,
+  EventStatus,
   Booking,
   Ticket,
   Category,
@@ -13,6 +14,18 @@ import {
 } from '@eventora/shared';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
+export interface OrganizerEventSummary {
+  id: string;
+  title: string;
+  slug: string;
+  status: EventStatus;
+  startDate: string;
+  bookedSeats: number;
+  totalCapacity: number;
+  category: Pick<Category, 'name'>;
+  _count: { bookings: number; reviews: number };
+}
 
 async function fetcher<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
   const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
@@ -197,7 +210,7 @@ export const api = {
   // Organizer
   organizer: {
     dashboard: () => fetcher<any>('/organizer/dashboard'),
-    events: () => fetcher<Event[]>('/organizer/events'),
+    events: () => fetcher<OrganizerEventSummary[]>('/organizer/events'),
     attendees: (eventId: string) => fetcher<any[]>(`/organizer/events/${eventId}/attendees`),
     analytics: (eventId: string) => fetcher<any>(`/organizer/events/${eventId}/analytics`),
   },

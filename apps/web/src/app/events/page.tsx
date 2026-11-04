@@ -1,10 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { Event, Category } from '@eventora/shared';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Category } from '@eventora/shared';
 import { api } from '@/lib/api';
-import { MOCK_EVENTS, MOCK_CATEGORIES } from '@/lib/mockData';
+import { MOCK_CATEGORIES } from '@/lib/mockData';
+import {
+  eventsDiscoveryStateFromResponse,
+  initialEventsDiscoveryState,
+} from '@/lib/eventsDiscovery';
+import { getCategoryFilter, getEventsHrefWithCategory } from '@/lib/eventsNavigation';
 import { EventCard } from '@/components/events/EventCard';
 import {
   Search,
@@ -18,24 +23,26 @@ import {
 } from 'lucide-react';
 
 function EventsDiscoveryContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialQ = searchParams.get('q') || '';
-  const initialCategory = searchParams.get('category') || 'all';
 
   const [search, setSearch] = useState(initialQ);
-  const [category, setCategory] = useState(initialCategory);
   const [format, setFormat] = useState<string>('all');
   const [priceFilter, setPriceFilter] = useState<string>('all');
   const [cityFilter, setCityFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('date');
 
-  const [events, setEvents] = useState<Event[]>(MOCK_EVENTS);
+  const [eventsState, setEventsState] = useState(initialEventsDiscoveryState);
   const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES);
-  const [loading, setLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const category = getCategoryFilter(searchParams);
 
   useEffect(() => {
+    let active = true;
+
     async function fetchEvents() {
-      setLoading(true);
+      setEventsState({ status: 'loading' });
       try {
         const res = await api.events.list({
           q: search || undefined,
@@ -44,18 +51,26 @@ function EventsDiscoveryContent() {
           isFree: priceFilter === 'free' ? 'true' : undefined,
           sortBy: sortBy as any,
         });
-        if (res.success && res.data?.items) {
-          setEvents(res.data.items);
-        }
+        if (active) setEventsState(eventsDiscoveryStateFromResponse(res));
       } catch {
-        // Fallback filtering on mock data
-      } finally {
-        setLoading(false);
+        if (active) {
+          setEventsState({
+            status: 'error',
+            message: 'Unable to load experiences. Please check your connection and try again.',
+          });
+        }
       }
     }
 
     fetchEvents();
-  }, [search, category, format, priceFilter, sortBy]);
+
+    return () => {
+      active = false;
+    };
+  }, [search, category, format, priceFilter, sortBy, retryCount]);
+
+  const events = eventsState.status === 'success' ? eventsState.events : [];
+  const loading = eventsState.status === 'loading';
 
   // Client-side filtering fallback
   const filteredEvents = events.filter((e) => {
@@ -85,7 +100,7 @@ function EventsDiscoveryContent() {
 
   const resetFilters = () => {
     setSearch('');
-    setCategory('all');
+    router.replace(getEventsHrefWithCategory(searchParams, 'all'), { scroll: false });
     setFormat('all');
     setPriceFilter('all');
     setCityFilter('all');
@@ -159,7 +174,10 @@ function EventsDiscoveryContent() {
           {/* Category Dropdown */}
           <select
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            onChange={(e) => router.replace(
+              getEventsHrefWithCategory(searchParams, e.target.value),
+              { scroll: false },
+            )}
             className="px-3 py-1.5 rounded-lg border border-[#ded7ca] bg-white text-xs font-medium text-[#40382b] focus:outline-none"
           >
             <option value="all">All Categories</option>
@@ -209,13 +227,32 @@ function EventsDiscoveryContent() {
           )}
 
           <div className="ml-auto text-xs text-[#8c8273] font-medium">
-            Showing <span className="font-bold text-forest">{filteredEvents.length}</span> experiences
+            {loading ? (
+              'Loading experiences…'
+            ) : (
+              <>Showing <span className="font-bold text-forest">{filteredEvents.length}</span> experiences</>
+            )}
           </div>
         </div>
       </div>
 
       {/* Events Results Grid */}
-      {filteredEvents.length > 0 ? (
+      {loading ? (
+        <div role="status" aria-live="polite" className="rounded-3xl border border-[#ded7ca] bg-white p-12 text-center text-sm text-[#71695d]">
+          Loading experiences…
+        </div>
+      ) : eventsState.status === 'error' ? (
+        <div role="alert" className="rounded-3xl border border-red-200 bg-red-50 p-12 text-center space-y-4 max-w-xl mx-auto">
+          <h3 className="font-serif text-2xl font-bold text-forest">We could not load experiences</h3>
+          <p className="text-sm text-[#71695d]">{eventsState.message}</p>
+          <button
+            onClick={() => setRetryCount((count) => count + 1)}
+            className="px-6 py-2.5 rounded-xl bg-forest text-[#faf8f5] text-xs font-bold hover:bg-forest-light transition-all"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : filteredEvents.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredEvents.map((event) => (
             <EventCard key={event.id} event={event} />
@@ -226,16 +263,24 @@ function EventsDiscoveryContent() {
           <div className="w-16 h-16 rounded-2xl bg-[#faf8f5] flex items-center justify-center mx-auto text-3xl">
             🔍
           </div>
-          <h3 className="font-serif text-2xl font-bold text-forest">No experiences found</h3>
+          <h3 className="font-serif text-2xl font-bold text-forest">
+            {search || category !== 'all' || format !== 'all' || priceFilter !== 'all' || cityFilter !== 'all'
+              ? 'No experiences found'
+              : 'No experiences available yet'}
+          </h3>
           <p className="text-sm text-[#71695d]">
-            We could not find any events matching your selected filters. Try broadening your search or resetting filters.
+            {search || category !== 'all' || format !== 'all' || priceFilter !== 'all' || cityFilter !== 'all'
+              ? 'We could not find any events matching your selected filters. Try broadening your search or resetting filters.'
+              : 'There are no published experiences to show right now. Please check back soon.'}
           </p>
-          <button
-            onClick={resetFilters}
-            className="px-6 py-2.5 rounded-xl bg-forest text-[#faf8f5] text-xs font-bold hover:bg-forest-light transition-all"
-          >
-            Clear All Filters
-          </button>
+          {(search || category !== 'all' || format !== 'all' || priceFilter !== 'all' || cityFilter !== 'all') && (
+            <button
+              onClick={resetFilters}
+              className="px-6 py-2.5 rounded-xl bg-forest text-[#faf8f5] text-xs font-bold hover:bg-forest-light transition-all"
+            >
+              Clear All Filters
+            </button>
+          )}
         </div>
       )}
     </div>

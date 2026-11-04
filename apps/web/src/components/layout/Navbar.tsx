@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Avatar } from '@/components/ui/Avatar';
+import { eventNavigationLinks } from '@/lib/eventsNavigation';
 import {
   Compass,
   Calendar,
@@ -47,21 +48,22 @@ export function Navbar() {
           {/* Desktop Navigation Links */}
           <nav className="hidden md:flex items-center space-x-8">
             <Link
-              href="/events"
+              href={eventNavigationLinks.explore}
               className={`text-sm font-medium tracking-wide transition-colors hover:text-forest ${
-                pathname.startsWith('/events') ? 'text-forest font-semibold' : 'text-[#5c5446]'
+                pathname === '/events' ? 'text-forest font-semibold' : 'text-[#5c5446]'
               }`}
+              aria-current={pathname === '/events' ? 'page' : undefined}
             >
               Explore Events
             </Link>
             <Link
-              href="/events?category=technology"
+              href={eventNavigationLinks.masterclasses}
               className="text-sm font-medium tracking-wide text-[#5c5446] hover:text-forest transition-colors"
             >
               Masterclasses
             </Link>
             <Link
-              href="/events?category=design"
+              href={eventNavigationLinks.workshops}
               className="text-sm font-medium tracking-wide text-[#5c5446] hover:text-forest transition-colors"
             >
               Workshops
@@ -200,21 +202,21 @@ export function Navbar() {
       {mobileMenuOpen && (
         <div className="md:hidden border-b border-[#e5dfd3] bg-[#faf8f5] px-4 pt-2 pb-6 space-y-3">
           <Link
-            href="/events"
+            href={eventNavigationLinks.explore}
             onClick={() => setMobileMenuOpen(false)}
             className="block px-3 py-2 text-base font-medium text-forest rounded-lg hover:bg-[#f2ede4]"
           >
             Explore Events
           </Link>
           <Link
-            href="/events?category=technology"
+            href={eventNavigationLinks.masterclasses}
             onClick={() => setMobileMenuOpen(false)}
             className="block px-3 py-2 text-base font-medium text-[#5c5446] rounded-lg hover:bg-[#f2ede4]"
           >
             Masterclasses
           </Link>
           <Link
-            href="/events?category=design"
+            href={eventNavigationLinks.workshops}
             onClick={() => setMobileMenuOpen(false)}
             className="block px-3 py-2 text-base font-medium text-[#5c5446] rounded-lg hover:bg-[#f2ede4]"
           >
