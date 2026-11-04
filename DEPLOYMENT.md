@@ -69,7 +69,8 @@ Set these Vercel environment variables for every environment that should run the
 application, then redeploy (the `NEXT_PUBLIC_*` values are embedded at build time):
 
 - `NEXT_PUBLIC_API_URL`: deployed Render URL ending in `/api`, e.g.
-  `https://<your-api>.onrender.com/api`.
+  `https://<your-api>.onrender.com/api`. If configured with only the Render
+  origin, the frontend adds `/api` automatically.
 - `NEXT_PUBLIC_RAZORPAY_KEY_ID`: the same Razorpay Test Mode key ID as the API.
 - `NEXT_PUBLIC_APP_NAME`: `Eventora`.
 

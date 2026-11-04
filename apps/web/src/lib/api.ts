@@ -13,7 +13,11 @@ import {
   UpdateProfileInput,
 } from '@eventora/shared';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const configuredApiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const normalizedApiBase = configuredApiBase.replace(/\/+$/, '');
+const API_BASE = normalizedApiBase.endsWith('/api')
+  ? normalizedApiBase
+  : `${normalizedApiBase}/api`;
 
 export interface OrganizerEventSummary {
   id: string;

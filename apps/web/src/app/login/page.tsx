@@ -31,11 +31,6 @@ function LoginForm() {
     }
   };
 
-  const setTestAccount = (e: string, p: string) => {
-    setEmail(e);
-    setPassword(p);
-  };
-
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full bg-white rounded-3xl border border-[#ded7ca] p-8 sm:p-10 shadow-warm-lg space-y-8">
@@ -111,34 +106,14 @@ function LoginForm() {
           </button>
         </form>
 
-        {/* Quick Test Demo Credentials */}
+        {/* Demo accounts are intentionally unavailable in production. */}
         <div className="pt-4 border-t border-[#f0ede6] space-y-2 text-xs">
           <p className="text-[11px] font-bold uppercase tracking-wider text-[#8c8273]">
-            Quick Test Accounts:
+            Demo accounts unavailable
           </p>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => setTestAccount('admin@eventora.com', 'Admin@123456')}
-              className="p-1.5 bg-[#faf8f5] border border-[#ded7ca] hover:border-forest rounded-lg text-[11px] font-semibold text-forest text-center"
-            >
-              Admin
-            </button>
-            <button
-              type="button"
-              onClick={() => setTestAccount('priya@eventora.com', 'Organizer@123')}
-              className="p-1.5 bg-[#faf8f5] border border-[#ded7ca] hover:border-forest rounded-lg text-[11px] font-semibold text-terracotta text-center"
-            >
-              Organizer
-            </button>
-            <button
-              type="button"
-              onClick={() => setTestAccount('aisha@example.com', 'Attendee@123')}
-              className="p-1.5 bg-[#faf8f5] border border-[#ded7ca] hover:border-forest rounded-lg text-[11px] font-semibold text-[#40382b] text-center"
-            >
-              Attendee
-            </button>
-          </div>
+          <p className="text-[#71695d]">
+            Demo sign-ins are disabled for this deployment. Register an account or contact an administrator.
+          </p>
         </div>
 
         <div className="text-center text-xs text-[#71695d]">
