@@ -1,9 +1,12 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
 import { Event } from '@eventora/shared';
 import { formatDate, formatCurrency } from '@/lib/utils';
-import { Calendar, MapPin, Users, Video, Star } from 'lucide-react';
+import { Calendar, MapPin, Sparkles, Video, Star } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
+import { EventCoverImage } from '@/components/events/EventCoverImage';
 
 interface EventCardProps {
   event: Event;
@@ -21,10 +24,14 @@ export function EventCard({ event, featured = false }: EventCardProps) {
       <div className={`relative overflow-hidden bg-[#f0ede6] ${
         featured ? 'md:w-1/2 aspect-[16/10] md:aspect-auto' : 'aspect-[16/10]'
       }`}>
-        <img
-          src={event.coverImage || 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop'}
+        <EventCoverImage
+          src={event.coverImage}
           alt={event.title}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+          label={event.category?.name || 'Eventora experience'}
+          fallbackSrc={event.images?.[0]}
+          categorySlug={event.category?.slug}
+          sizes={featured ? '(max-width: 768px) 100vw, 50vw' : '(max-width: 768px) 100vw, 33vw'}
+          imageClassName="transition-transform duration-500 ease-out group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-60" />
 
@@ -44,6 +51,13 @@ export function EventCard({ event, featured = false }: EventCardProps) {
           </span>
         </div>
 
+        {(featured || event.isFeatured) && (
+          <span className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50/95 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm backdrop-blur-sm">
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            Featured workshop
+          </span>
+        )}
+
         {/* Sold out overlay tag if applicable */}
         {isSoldOut && (
           <div className="absolute bottom-3 left-3 bg-terracotta text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">
@@ -59,7 +73,7 @@ export function EventCard({ event, featured = false }: EventCardProps) {
           <div className="flex items-center justify-between text-xs text-[#71695d] mb-2 font-medium">
             <span className="flex items-center gap-1.5 text-forest font-semibold">
               <Calendar className="w-3.5 h-3.5 text-terracotta" />
-              {formatDate(event.startDate)}
+              {formatDate(event.startDate, { timeZone: event.timezone || 'UTC' })}
             </span>
             {event.averageRating && (
               <span className="flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">

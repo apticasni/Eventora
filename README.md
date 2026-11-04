@@ -18,7 +18,7 @@ flowchart TD
     end
 
     subgraph Backend ["apps/api (Express.js + TypeScript)"]
-        G["Auth Router (JWT / OTP)"]
+        G["Auth Router (JWT / Google OAuth)"]
         H["Events Router (CRUD / Publish)"]
         I["Bookings Engine (Row Locking)"]
         J["Razorpay HMAC Verification"]
@@ -80,7 +80,6 @@ eventora/
 │       │   │   ├── events/page.tsx      # Filterable discovery catalog
 │       │   │   ├── events/[slug]/       # Event details, booking & waitlist card
 │       │   │   ├── login/ & register/   # Authentication flows
-│       │   │   ├── forgot-password/     # 6-digit OTP password reset
 │       │   │   ├── dashboard/           # Attendee tickets, wallet, waitlists, certs
 │       │   │   ├── organizer/           # Organizer studio & html5-qrcode camera scanner
 │       │   │   └── admin/               # Admin command center & Recharts analytics
@@ -189,6 +188,46 @@ npm run db:migrate
 `db:migrate` applies committed migrations and does not reset existing data. The demo seed
 deletes all database rows and is blocked unless `ALLOW_DESTRUCTIVE_SEED=true` is set;
 use it only with an explicitly disposable database.
+
+The additive migrations add profile phone numbers, saved events, and in-app notifications,
+as well as administrator audit logs, user suspension, review moderation, and support
+requests with private internal notes. These migrations are applied to the dedicated local
+`eventora_local` database. For any other environment, first confirm `DATABASE_URL` targets
+the intended database before applying migrations.
+
+To add only missing production demo login accounts without changing existing users or
+passwords, explicitly run:
+```bash
+npm run db:seed-demo-users -- --apply-production
+```
+The script prints the database host before writing and saves newly generated logins to
+the gitignored `demo-credentials.txt` file. Store that file securely; it contains
+plaintext passwords. Existing accounts are preserved and do not have their passwords
+reset. This command is separate from the destructive demo seed above.
+
+For a fictional, additive development dataset, first verify the API's
+`DATABASE_URL` targets the dedicated local database `eventora_local` on
+`127.0.0.1:5433`, then run:
+```bash
+cd apps/api
+npm run db:seed-demo-dataset
+```
+This local-only seed creates missing demo users and related application records,
+and is safe to rerun. It never uses the destructive `db:seed` command. Generated
+login details are stored in the gitignored `demo-dataset-credentials.txt` file;
+keep that file private.
+
+For ten additional fictional organizer and attendee accounts with related local
+development events, registrations, and dashboard data, run from `apps/api`:
+```bash
+npm run db:seed-organizer-attendee-demo
+```
+The script refuses production and any database other than `eventora_local` on
+`127.0.0.1:5433`, creates missing records only, and preserves existing accounts.
+These accounts use the local-only password convention `<FirstName>@1234` (for example,
+the password begins with the account holder's first name). The script hashes passwords
+with bcrypt and never prints or stores plaintext passwords. Do not reuse these demo
+passwords outside local development. Credentials are intentionally excluded from tracked documentation. Keep local demo logins private and never reuse them in production.
 
 ### 3. Start Development Servers
 From the root workspace:

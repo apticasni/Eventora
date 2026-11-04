@@ -1,23 +1,24 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { escapeHtml } from './html';
-
-const isDev = process.env.NODE_ENV !== 'production';
-const hasSmtp = !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+import { getSmtpConfig } from './emailConfig';
 
 let transporter: Transporter | null = null;
+let smtpFrom: string | null = null;
 
-if (hasSmtp) {
+function getTransporter(): Transporter | null {
+  if (transporter) return transporter;
+
+  const config = getSmtpConfig();
+  if (!config) return null;
+
+  smtpFrom = config.from;
   transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.pass },
   });
-} else if (isDev) {
-  console.log('📧 Email: SMTP not configured. Emails will be logged to console.');
+  return transporter;
 }
 
 const FROM = process.env.EMAIL_FROM || 'Eventora <noreply@eventora.com>';
@@ -25,11 +26,12 @@ const APP_URL = escapeHtml(process.env.FRONTEND_URL || 'http://localhost:3000');
 
 async function sendEmail(to: string, subject: string, html: string) {
   const safeSubject = subject.replace(/[\r\n]+/g, ' ');
-  if (!transporter) {
+  const mailer = getTransporter();
+  if (!mailer) {
     console.log(`\n📧 [DEV EMAIL] To: ${to}\nSubject: ${safeSubject}\n${html.replace(/<[^>]+>/g, '')}\n`);
     return;
   }
-  await transporter.sendMail({ from: FROM, to, subject: safeSubject, html });
+  await mailer.sendMail({ from: smtpFrom || FROM, to, subject: safeSubject, html });
 }
 
 const baseStyle = `
@@ -180,15 +182,5 @@ export async function sendEventReminder(to: string, name: string, event: {
         : ''}
     </table>
     <a href="${APP_URL}/dashboard/bookings" style="${btnStyle}">View Ticket</a>
-  `));
-}
-
-export async function sendPasswordResetOTP(to: string, name: string, otp: string) {
-  await sendEmail(to, 'Password Reset OTP — Eventora', layout(`
-    <h2 style="color:#1a3a2a;">Password Reset Request</h2>
-    <p>Hi ${escapeHtml(name)}, you requested a password reset for your Eventora account.</p>
-    <p>Use the following 6-digit OTP to reset your password. This code expires in <strong>15 minutes</strong>.</p>
-    <div style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#1a3a2a;text-align:center;padding:24px;background:#f0ede8;border-radius:8px;margin:16px 0;">${otp}</div>
-    <p style="color:#666;font-size:14px;">If you did not request this, please ignore this email. Your password will not change.</p>
   `));
 }

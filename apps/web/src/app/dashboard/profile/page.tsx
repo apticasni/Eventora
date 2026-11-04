@@ -27,6 +27,7 @@ function ProfileForm({ user }: { user: User | null }) {
   const { refreshUser } = useAuth();
   const [name, setName] = useState(user?.name || '');
   const [bio, setBio] = useState(user?.bio || '');
+  const [phone, setPhone] = useState(user?.phone || '');
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [interests, setInterests] = useState<string[]>(user?.interests || []);
   const [loading, setLoading] = useState(false);
@@ -48,7 +49,7 @@ function ProfileForm({ user }: { user: User | null }) {
     setSaved(false);
     setError(null);
     try {
-      const response = await api.auth.updateProfile({ name, bio, interests, avatar });
+      const response = await api.auth.updateProfile({ name, bio, phone, interests, avatar });
       if (!response.success) {
         throw new Error(response.message || 'Could not save your profile.');
       }
@@ -177,8 +178,9 @@ function ProfileForm({ user }: { user: User | null }) {
           )}
 
           <div>
-            <label className="block text-xs font-bold text-forest mb-1.5">Full Name</label>
+            <label htmlFor="profile-name" className="block text-xs font-bold text-forest mb-1.5">Full Name</label>
             <input
+              id="profile-name"
               type="text"
               required
               value={name}
@@ -188,8 +190,22 @@ function ProfileForm({ user }: { user: User | null }) {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-forest mb-1.5">Bio / Professional Headline</label>
+            <label htmlFor="profile-phone" className="block text-xs font-bold text-forest mb-1.5">Phone number</label>
+            <input
+              id="profile-phone"
+              type="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              maxLength={30}
+              className="w-full px-4 py-2.5 rounded-xl border border-[#ded7ca] bg-[#faf8f5] focus:bg-white text-xs sm:text-sm font-semibold"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="profile-bio" className="block text-xs font-bold text-forest mb-1.5">Bio / Professional Headline</label>
             <textarea
+              id="profile-bio"
               rows={3}
               placeholder="Tell other attendees and instructors about yourself and what you are learning..."
               value={bio}
@@ -216,6 +232,7 @@ function ProfileForm({ user }: { user: User | null }) {
                   <button
                     key={interest}
                     type="button"
+                    aria-pressed={selected}
                     onClick={() => toggleInterest(interest)}
                     className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border ${
                       selected

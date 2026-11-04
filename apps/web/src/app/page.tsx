@@ -7,6 +7,7 @@ import { Event, Category } from '@eventora/shared';
 import { api } from '@/lib/api';
 import { MOCK_EVENTS, MOCK_CATEGORIES } from '@/lib/mockData';
 import { EventCard } from '@/components/events/EventCard';
+import { EventCoverImage } from '@/components/events/EventCoverImage';
 import { Avatar } from '@/components/ui/Avatar';
 import { formatDate } from '@/lib/utils';
 import {
@@ -173,10 +174,14 @@ export default function HomePage() {
               <div className="absolute -inset-2 bg-gradient-to-tr from-terracotta/20 to-emerald-200/20 rounded-3xl blur-xl" />
               <div className="relative bg-white rounded-3xl border border-[#ded7ca] shadow-warm-lg p-6 space-y-5">
                 <div className="relative aspect-[16/11] rounded-2xl overflow-hidden">
-                  <img
-                    src={heroFeatured.coverImage || ''}
+                  <EventCoverImage
+                    src={heroFeatured.coverImage}
                     alt={heroFeatured.title}
-                    className="w-full h-full object-cover"
+                    label={heroFeatured.category?.name || 'Featured workshop'}
+                    fallbackSrc={heroFeatured.images?.[0]}
+                    categorySlug={heroFeatured.category?.slug}
+                    sizes="(max-width: 1024px) 100vw, 40vw"
+                    loading="eager"
                   />
                   <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-forest">
                     Featured Workshop
@@ -189,7 +194,7 @@ export default function HomePage() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-xs text-[#71695d]">
                     <Calendar className="w-3.5 h-3.5 text-terracotta" />
-                    <span>{formatDate(heroFeatured.startDate)}</span>
+                    <span>{formatDate(heroFeatured.startDate, { timeZone: heroFeatured.timezone || 'UTC' })}</span>
                     <span>•</span>
                     <MapPin className="w-3.5 h-3.5 text-terracotta" />
                     <span>{heroFeatured.city || 'Virtual'}</span>

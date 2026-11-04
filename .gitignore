@@ -11,3 +11,5 @@ dist
 coverage
 .vercel
 .render
+demo-credentials.txt
+demo-dataset-credentials.txt

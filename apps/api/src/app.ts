@@ -1,3 +1,4 @@
+import './lib/loadEnv';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -18,8 +19,13 @@ import { adminRouter } from './routes/admin';
 import { organizerRouter } from './routes/organizer';
 import { recommendationsRouter } from './routes/recommendations';
 import { calendarRouter } from './routes/calendar';
+import { notificationsRouter } from './routes/notifications';
+import { savedEventsRouter } from './routes/savedEvents';
+import { supportRouter } from './routes/support';
 import { errorHandler } from './middleware/errorHandler';
 import { prisma } from './lib/prisma';
+import { getAllowedOrigins } from './lib/cors';
+import { getAuthRateLimitMax } from './lib/rateLimits';
 
 export const app = express();
 
@@ -28,10 +34,7 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: (process.env.FRONTEND_URL || 'http://localhost:3000')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+  origin: getAllowedOrigins(),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Razorpay-Signature'],
@@ -58,7 +61,7 @@ app.use(globalLimiter);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: getAuthRateLimitMax(),
   message: { success: false, message: 'Too many authentication attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -97,6 +100,9 @@ app.use('/api/admin', adminRouter);
 app.use('/api/organizer', organizerRouter);
 app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/calendar', calendarRouter);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/saved-events', savedEventsRouter);
+app.use('/api/support', supportRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });

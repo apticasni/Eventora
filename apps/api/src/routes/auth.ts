@@ -5,13 +5,14 @@ import { signToken, getCookieOptions } from '../lib/jwt';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
-import { sendWelcomeEmail, sendPasswordResetOTP } from '../lib/email';
+import { sendWelcomeEmail } from '../lib/email';
+import { googleAuthRouter } from './googleAuth';
 import {
-  RegisterSchema, LoginSchema, ForgotPasswordSchema,
-  ResetPasswordSchema, UpdateProfileSchema,
+  RegisterSchema, LoginSchema, UpdateProfileSchema,
 } from '@eventora/shared';
 
 export const authRouter = Router();
+authRouter.use('/google', googleAuthRouter);
 
 // POST /api/auth/register
 authRouter.post('/register', validateBody(RegisterSchema), async (req, res: Response, next) => {
@@ -80,7 +81,7 @@ authRouter.get('/me', requireAuth, async (req: AuthRequest, res: Response, next)
       where: { id: req.user!.userId },
       select: {
         id: true, name: true, email: true, role: true,
-        avatar: true, bio: true, interests: true, isVerified: true, createdAt: true,
+        avatar: true, bio: true, phone: true, interests: true, isVerified: true, createdAt: true,
       },
     });
     if (!user) throw new AppError(404, 'User not found.');
@@ -91,57 +92,12 @@ authRouter.get('/me', requireAuth, async (req: AuthRequest, res: Response, next)
 // PUT /api/auth/profile
 authRouter.put('/profile', requireAuth, validateBody(UpdateProfileSchema), async (req: AuthRequest, res: Response, next) => {
   try {
-    const { name, bio, avatar, interests } = req.body;
+    const { name, bio, phone, avatar, interests } = req.body;
     const user = await prisma.user.update({
       where: { id: req.user!.userId },
-      data: { name, bio, avatar, interests },
-      select: { id: true, name: true, email: true, role: true, avatar: true, bio: true, interests: true },
+      data: { name, bio, phone, avatar, interests },
+      select: { id: true, name: true, email: true, role: true, avatar: true, bio: true, phone: true, interests: true },
     });
     res.json({ success: true, data: user, message: 'Profile updated successfully' });
-  } catch (err) { next(err); }
-});
-
-// POST /api/auth/forgot-password
-authRouter.post('/forgot-password', validateBody(ForgotPasswordSchema), async (req, res: Response, next) => {
-  try {
-    const { email } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
-
-    if (user) {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-
-      await prisma.passwordResetOTP.create({
-        data: { userId: user.id, otp, expiresAt },
-      });
-
-      sendPasswordResetOTP(user.email, user.name, otp).catch(console.error);
-    }
-
-    // Always return success to prevent email enumeration
-    res.json({ success: true, message: 'If an account with that email exists, a reset OTP has been sent.' });
-  } catch (err) { next(err); }
-});
-
-// POST /api/auth/reset-password
-authRouter.post('/reset-password', validateBody(ResetPasswordSchema), async (req, res: Response, next) => {
-  try {
-    const { email, otp, newPassword } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) throw new AppError(400, 'Invalid OTP or email.');
-
-    const record = await prisma.passwordResetOTP.findFirst({
-      where: { userId: user.id, otp, used: false, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!record) throw new AppError(400, 'Invalid or expired OTP.');
-
-    const passwordHash = await bcrypt.hash(newPassword, 12);
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
-      prisma.passwordResetOTP.update({ where: { id: record.id }, data: { used: true } }),
-    ]);
-
-    res.json({ success: true, message: 'Password reset successfully. Please log in with your new password.' });
   } catch (err) { next(err); }
 });
