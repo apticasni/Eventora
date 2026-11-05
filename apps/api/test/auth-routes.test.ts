@@ -32,23 +32,25 @@ async function startAuthServer(): Promise<string> {
   return `http://127.0.0.1:${address.port}`;
 }
 
-describe('authentication routes after removing email password reset', () => {
-  it('does not expose the password-reset endpoints', async () => {
+describe('authentication routes', () => {
+  it('mounts password-recovery endpoints and validates their requests', async () => {
     const origin = await startAuthServer();
-    const paths = [
-      '/api/auth/forgot-password',
-      '/api/auth/verify-reset-otp',
-      '/api/auth/reset-password',
+    const cases = [
+      ['/api/auth/forgot-password', { email: 'not-an-email' }],
+      ['/api/auth/reset-password', { token: 'short', newPassword: 'password' }],
     ];
 
-    for (const path of paths) {
+    for (const [path, body] of cases) {
       const response = await fetch(`${origin}${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'person@example.com' }),
+        body: JSON.stringify(body),
       });
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(400);
     }
+
+    const removedLegacyOtpRoute = await fetch(`${origin}/api/auth/verify-reset-otp`, { method: 'POST' });
+    expect(removedLegacyOtpRoute.status).toBe(404);
   });
 
   it('keeps regular login and registration routes active', async () => {

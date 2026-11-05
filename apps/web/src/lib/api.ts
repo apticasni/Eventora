@@ -78,6 +78,14 @@ export const api = {
       body: JSON.stringify(body),
     }),
     logout: () => fetcher<void>('/auth/logout', { method: 'POST' }),
+    forgotPassword: (email: string) => fetcher<void>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+    resetPassword: (body: { token: string; newPassword: string }) => fetcher<void>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
     updateProfile: (body: UpdateProfileInput) => fetcher<User>('/auth/profile', {
       method: 'PUT',
       body: JSON.stringify(body),

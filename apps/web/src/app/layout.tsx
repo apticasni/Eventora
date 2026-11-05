@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: 'Eventora — Discover. Connect. Experience.',
   description: 'A sophisticated, editorial event discovery and registration platform for workshops, masterclasses, and gatherings.',
   keywords: ['workshops', 'masterclasses', 'events', 'design', 'technology', 'conferences', 'tickets'],
+  referrer: 'no-referrer',
 };
 
 export default function RootLayout({

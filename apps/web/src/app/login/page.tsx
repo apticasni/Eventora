@@ -6,11 +6,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { getSafeRedirectPath } from '@/lib/safeRedirect';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/dashboard/bookings';
+  const redirect = getSafeRedirectPath(searchParams.get('redirect'));
+  const googleSignInUrl = new URL(api.auth.googleSignInUrl);
+  googleSignInUrl.searchParams.set('redirect', redirect);
   const googleStatus = searchParams.get('google');
   const { login, refreshUser } = useAuth();
 
@@ -124,7 +127,7 @@ function LoginForm() {
         </div>
 
         <a
-          href={api.auth.googleSignInUrl}
+          href={googleSignInUrl.toString()}
           className="w-full py-3 rounded-xl border border-[#ded7ca] bg-white hover:bg-[#faf8f5] text-forest font-bold text-sm transition-all flex items-center justify-center gap-3"
         >
           <span aria-hidden="true" className="font-bold text-base">G</span>
@@ -135,6 +138,11 @@ function LoginForm() {
           Don&apos;t have an account yet?{' '}
           <Link href="/register" className="font-bold text-forest hover:text-terracotta underline">
             Register now
+          </Link>
+        </div>
+        <div className="text-center text-xs">
+          <Link href="/forgot-password" className="font-semibold text-forest hover:text-terracotta underline">
+            Forgot your password?
           </Link>
         </div>
       </div>

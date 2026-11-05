@@ -118,6 +118,13 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const syncSection = (hash = window.location.hash) => {
       const next = getAdminSection(hash);
+      // Hide records from the previously selected section while this section loads.
+      // In particular, user records do not have event dates, so rendering them in
+      // the events table during this transition can crash date formatting.
+      setLoading(!next.section);
+      setError(null);
+      setRecords([]);
+      setPageData(null);
       setActiveTab(next.tab);
       setSpecialSection(next.section || null);
       setRoleFilter(next.role || '');

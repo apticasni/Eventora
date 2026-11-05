@@ -21,6 +21,15 @@ function getTransporter(): Transporter | null {
   return transporter;
 }
 
+export function canSendPasswordResetEmail(): boolean {
+  if (process.env.NODE_ENV !== 'production') return false;
+  try {
+    return Boolean(getSmtpConfig());
+  } catch {
+    return false;
+  }
+}
+
 const FROM = process.env.EMAIL_FROM || 'Eventora <noreply@eventora.com>';
 const APP_URL = escapeHtml(process.env.FRONTEND_URL || 'http://localhost:3000');
 
@@ -97,6 +106,32 @@ export async function sendWelcomeEmail(to: string, name: string) {
     <a href="${APP_URL}/events" style="${btnStyle}">Explore Events</a>
     <p style="margin-top:24px;color:#666;font-size:14px;">Happy learning! 🌱</p>
   `));
+}
+
+export async function sendPasswordResetEmail(to: string, name: string, token: string): Promise<boolean> {
+  // Password-reset links are never written to local development or test logs.
+  if (!canSendPasswordResetEmail()) return false;
+
+  const mailer = getTransporter();
+  if (!mailer) return false;
+
+  const frontendOrigin = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+  const resetUrl = new URL('/reset-password', frontendOrigin);
+  resetUrl.hash = new URLSearchParams({ token }).toString();
+  const safeResetUrl = escapeHtml(resetUrl.toString());
+  await mailer.sendMail({
+    from: smtpFrom || FROM,
+    to,
+    subject: 'Reset your Eventora password',
+    html: layout(`
+      <h2 style="color:#1a3a2a;">Reset your password</h2>
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>Use the link below to choose a new password. It expires in 15 minutes and can be used once.</p>
+      <a href="${safeResetUrl}" style="${btnStyle}">Reset Password</a>
+      <p style="color:#666;font-size:14px;">If you did not request this, you can ignore this email.</p>
+    `),
+  });
+  return true;
 }
 
 export async function sendBookingConfirmation(to: string, name: string, event: {

@@ -205,17 +205,33 @@ the gitignored `demo-credentials.txt` file. Store that file securely; it contain
 plaintext passwords. Existing accounts are preserved and do not have their passwords
 reset. This command is separate from the destructive demo seed above.
 
-For a fictional, additive development dataset, first verify the API's
+For the fictional, additive development dataset, first verify the API's
 `DATABASE_URL` targets the dedicated local database `eventora_local` on
-`127.0.0.1:5433`, then run:
-```bash
-cd apps/api
-npm run db:seed-demo-dataset
+`127.0.0.1:5433`. The seed also ensures `admin@eventora.com` has the local admin
+password supplied through `EVENTORA_LOCAL_ADMIN_PASSWORD`. In PowerShell, enter
+that password with a hidden prompt and run the seed from `apps/api`:
+
+```powershell
+$securePassword = Read-Host 'Local Eventora admin password' -AsSecureString
+$passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+try {
+  $env:EVENTORA_LOCAL_ADMIN_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
+  npm.cmd run db:seed-demo-dataset
+} finally {
+  Remove-Item Env:EVENTORA_LOCAL_ADMIN_PASSWORD -ErrorAction SilentlyContinue
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
+}
 ```
-This local-only seed creates missing demo users and related application records,
-and is safe to rerun. It never uses the destructive `db:seed` command. Generated
-login details are stored in the gitignored `demo-dataset-credentials.txt` file;
-keep that file private.
+
+The local admin password is bcrypt-hashed and is not written to the demo
+credentials file. An existing `admin@eventora.com` account keeps its profile and
+related records while its password hash and admin role are updated. The seed
+creates five organizers, ten attendees, and fifteen events when those records are
+missing. Paid demo payments remain pending; no successful payment is fabricated.
+The seed is local-only, safe to rerun, preserves other users and records, and
+never uses the destructive `db:seed` command. Generated demo-user logins are
+stored in the gitignored `demo-dataset-credentials.txt` file; keep that file
+private.
 
 For ten additional fictional organizer and attendee accounts with related local
 development events, registrations, and dashboard data, run from `apps/api`:
