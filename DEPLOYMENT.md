@@ -59,9 +59,11 @@ variable; Render documents it for Static Sites, not Web Services:
   belongs only in Render, never in Vercel or frontend code. The callback URL
   must match that exact API route; local development may use HTTP.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`:
-  optional SMTP settings for transactional notifications. Set host, port,
-  username, and password together. Gmail requires an App Password and the
-  authenticated Gmail address as `EMAIL_FROM`.
+  SMTP settings for transactional notifications and password recovery. Set
+  host, port, username, and password together. Password recovery stays disabled
+  until valid SMTP settings are available. Gmail requires an App Password and
+  the authenticated Gmail address as `EMAIL_FROM`. Reset links are never sent
+  or written to logs outside production.
 - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`: Razorpay
   **Test Mode** values.
 
@@ -94,6 +96,16 @@ application, then redeploy (the `NEXT_PUBLIC_*` values are embedded at build tim
   origin, the frontend adds `/api` automatically.
 - `NEXT_PUBLIC_RAZORPAY_KEY_ID`: the same Razorpay Test Mode key ID as the API.
 - `NEXT_PUBLIC_APP_NAME`: `Eventora`.
+
+### Windows local build workaround
+
+If Prisma generation fails on Windows with `EPERM` while replacing
+`query_engine-windows.dll.node`, the generated client in the shared
+`node_modules` may be locked by another Node process. Do not delete that file or
+stop unrelated processes. Build from a fresh temporary copy or checkout that
+excludes local `.env*` files and `node_modules`, run `npm ci`, set
+`NEXT_PUBLIC_API_URL` to an HTTPS API URL for the build, and run `npm run build`.
+This isolated build was verified without connecting to or changing a database.
 
 The API allows credentials and production auth cookies use `SameSite=None; Secure`
 for the cross-origin frontend/backend setup. Keep `FRONTEND_URL` restricted to

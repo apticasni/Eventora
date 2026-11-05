@@ -13,6 +13,15 @@ export const LoginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+export const ForgotPasswordSchema = z.object({
+  email: z.string().trim().email('Invalid email address').max(254),
+});
+
+export const ResetPasswordSchema = z.object({
+  token: z.string().regex(/^[a-f0-9]{64}$/i, 'Invalid or expired reset link.'),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters').max(100),
+});
+
 export const UpdateProfileSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   bio: z.string().max(500).optional(),
@@ -149,6 +158,8 @@ export const RejectProposalSchema = z.object({
 // Type exports from schemas
 export type RegisterInput = z.infer<typeof RegisterSchema>;
 export type LoginInput = z.infer<typeof LoginSchema>;
+export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
 export type CreateEventInput = z.infer<typeof CreateEventSchema>;
 export type UpdateEventInput = z.infer<typeof UpdateEventSchema>;

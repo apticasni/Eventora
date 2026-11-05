@@ -50,7 +50,7 @@ async function main() {
   await prisma.booking.deleteMany();
   await prisma.review.deleteMany();
   await prisma.waitlistEntry.deleteMany();
-  await prisma.passwordResetOTP.deleteMany();
+  await prisma.passwordResetToken.deleteMany();
   await prisma.proposal.deleteMany();
   await prisma.event.deleteMany();
   await prisma.category.deleteMany();

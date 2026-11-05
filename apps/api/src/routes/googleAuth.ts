@@ -7,6 +7,7 @@ import { getCookieOptions, signToken } from '../lib/jwt';
 import { AppError } from '../middleware/errorHandler';
 import { findOrCreateGoogleUser, GoogleAccountError } from '../lib/googleAuth';
 import { getGoogleOAuthConfig, GoogleOAuthConfig } from '../lib/googleOAuthConfig';
+import { DEFAULT_AUTH_REDIRECT, getSafeRedirectPath } from '@eventora/shared';
 
 export const googleAuthRouter = Router();
 
@@ -25,13 +26,28 @@ function getOAuthClient(config = getOAuthConfig()): OAuth2Client {
   return new OAuth2Client(config.clientId, config.clientSecret, config.callbackUrl);
 }
 
-function getFrontendLoginUrl(status: 'success' | 'cancelled' | 'failed'): string {
+function getFrontendLoginUrl(
+  status: 'success' | 'cancelled' | 'failed',
+  redirect = DEFAULT_AUTH_REDIRECT,
+): string {
   const frontendOrigin = (process.env.FRONTEND_URL || 'http://localhost:3000')
     .split(',')[0]
     .trim();
   const loginUrl = new URL('/login', frontendOrigin);
   loginUrl.searchParams.set('google', status);
+  loginUrl.searchParams.set('redirect', getSafeRedirectPath(redirect));
   return loginUrl.toString();
+}
+
+function getRedirectFromStateCookie(storedState: unknown): string {
+  if (typeof storedState !== 'string') return DEFAULT_AUTH_REDIRECT;
+  const [, , encodedRedirect, ...extra] = storedState.split('.');
+  if (!encodedRedirect || extra.length) return DEFAULT_AUTH_REDIRECT;
+  try {
+    return getSafeRedirectPath(Buffer.from(encodedRedirect, 'base64url').toString('utf8'));
+  } catch {
+    return DEFAULT_AUTH_REDIRECT;
+  }
 }
 
 function clearStateCookie(res: Response): void {
@@ -49,15 +65,19 @@ function safeEqual(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-googleAuthRouter.get('/', async (_req: Request, res: Response, next: NextFunction) => {
+googleAuthRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const config = getOAuthConfig();
     const client = getOAuthClient(config);
     const state = randomBytes(32).toString('base64url');
     const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
     const cookieOptions = getCookieOptions();
+    const requestedRedirect = getSafeRedirectPath(
+      typeof req.query.redirect === 'string' ? req.query.redirect : null,
+    );
+    const encodedRedirect = Buffer.from(requestedRedirect).toString('base64url');
 
-    res.cookie(STATE_COOKIE, `${state}.${codeVerifier}`, {
+    res.cookie(STATE_COOKIE, `${state}.${codeVerifier}.${encodedRedirect}`, {
       ...cookieOptions,
       maxAge: STATE_COOKIE_MAX_AGE,
       sameSite: 'lax',
@@ -78,17 +98,18 @@ googleAuthRouter.get('/', async (_req: Request, res: Response, next: NextFunctio
 });
 
 googleAuthRouter.get('/callback', async (req: Request, res: Response) => {
+  const storedState = req.cookies?.[STATE_COOKIE];
+  const redirect = getRedirectFromStateCookie(storedState);
   const queryError = typeof req.query.error === 'string' ? req.query.error : null;
   if (queryError === 'access_denied') {
     clearStateCookie(res);
-    res.redirect(getFrontendLoginUrl('cancelled'));
+    res.redirect(getFrontendLoginUrl('cancelled', redirect));
     return;
   }
 
-  const storedState = req.cookies?.[STATE_COOKIE];
   const returnedState = typeof req.query.state === 'string' ? req.query.state : '';
   const code = typeof req.query.code === 'string' ? req.query.code : '';
-  const [expectedState, codeVerifier, ...extra] = typeof storedState === 'string'
+  const [expectedState, codeVerifier, encodedRedirect, ...extra] = typeof storedState === 'string'
     ? storedState.split('.')
     : [];
   clearStateCookie(res);
@@ -96,11 +117,12 @@ googleAuthRouter.get('/callback', async (req: Request, res: Response) => {
   if (
     !expectedState
     || !codeVerifier
+    || !encodedRedirect
     || extra.length > 0
     || !safeEqual(expectedState, returnedState)
     || !code
   ) {
-    res.redirect(getFrontendLoginUrl('failed'));
+    res.redirect(getFrontendLoginUrl('failed', redirect));
     return;
   }
 
@@ -115,7 +137,7 @@ googleAuthRouter.get('/callback', async (req: Request, res: Response) => {
     });
     const payload = ticket.getPayload();
     if (!payload?.sub || !payload.email || payload.email_verified !== true) {
-      res.redirect(getFrontendLoginUrl('failed'));
+      res.redirect(getFrontendLoginUrl('failed', redirect));
       return;
     }
 
@@ -146,13 +168,13 @@ googleAuthRouter.get('/callback', async (req: Request, res: Response) => {
     });
 
     res.cookie('token', signToken({ userId: user.id, email: user.email, role: user.role }), getCookieOptions());
-    res.redirect(getFrontendLoginUrl('success'));
+    res.redirect(getFrontendLoginUrl('success', redirect));
   } catch (error) {
     if (error instanceof GoogleAccountError) {
-      res.redirect(getFrontendLoginUrl('failed'));
+      res.redirect(getFrontendLoginUrl('failed', redirect));
       return;
     }
     console.error('Google sign-in callback failed.');
-    res.redirect(getFrontendLoginUrl('failed'));
+    res.redirect(getFrontendLoginUrl('failed', redirect));
   }
 });

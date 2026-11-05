@@ -9,7 +9,18 @@ import { issueTicketsIfMissing } from '../services/tickets';
 const prisma = new PrismaClient();
 const DEMO_MARKER = 'Eventora local development demo dataset.';
 const PASSWORD_LABEL = 'Local development demo password:';
+const LOCAL_ADMIN_EMAIL = 'admin@eventora.com';
 const credentialsPath = path.resolve(__dirname, '../../../../demo-dataset-credentials.txt');
+
+const categoryCoverImages: Record<string, string> = {
+  technology: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop',
+  workshops: 'https://images.unsplash.com/photo-1626785774573-4b799315345d?w=800&auto=format&fit=crop',
+  'arts-culture': 'https://images.unsplash.com/photo-1554048612-b6a482bc67e5?w=800&auto=format&fit=crop',
+  business: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&auto=format&fit=crop',
+  education: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&auto=format&fit=crop',
+  community: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&auto=format&fit=crop',
+  wellness: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&auto=format&fit=crop',
+};
 
 const categories = [
   { name: 'Technology', slug: 'technology', description: 'Software, data, AI, and emerging technology.', icon: 'Cpu', color: '#315b73' },
@@ -22,11 +33,11 @@ const categories = [
 ];
 
 const organizerProfiles = [
-  ['Ananya Nair', 'ananya.nair', 'Kochi', ['Technology', 'Education'], 'A product engineer who makes complex technical topics approachable.'],
-  ['Arjun Menon', 'arjun.menon', 'Kozhikode', ['Business', 'Community'], 'A community builder focused on thoughtful, sustainable local businesses.'],
-  ['Meera Thomas', 'meera.thomas', 'Thiruvananthapuram', ['Arts & Culture', 'Workshops'], 'A multidisciplinary artist and facilitator of collaborative studios.'],
-  ['Nikhil Varghese', 'nikhil.varghese', 'Thrissur', ['Technology', 'Business'], 'An independent software consultant and mentor for early-career teams.'],
-  ['Devika Pillai', 'devika.pillai', 'Alappuzha', ['Wellness', 'Education'], 'A learning designer interested in accessible and welcoming experiences.'],
+  ['Ananya Nair', 'ananya.nair', 'Kochi', ['Technology', 'Education'], 'A product engineer who makes complex technical topics approachable.', 'Harbourlight Learning Collective'],
+  ['Arjun Menon', 'arjun.menon', 'Kozhikode', ['Business', 'Community'], 'A community builder focused on thoughtful, sustainable local businesses.', 'Malabar Community Studio'],
+  ['Meera Thomas', 'meera.thomas', 'Thiruvananthapuram', ['Arts & Culture', 'Workshops'], 'A multidisciplinary artist and facilitator of collaborative studios.', 'Paper Kite Arts Workshop'],
+  ['Nikhil Varghese', 'nikhil.varghese', 'Thrissur', ['Technology', 'Business'], 'An independent software consultant and mentor for early-career teams.', 'Bridgeworks Technology Forum'],
+  ['Devika Pillai', 'devika.pillai', 'Alappuzha', ['Wellness', 'Education'], 'A learning designer interested in accessible and welcoming experiences.', 'Backwater Learning Circle'],
 ] as const;
 
 const attendeeProfiles = [
@@ -40,20 +51,6 @@ const attendeeProfiles = [
   ['Nila George', ['Community', 'Wellness'], 'Enjoys community projects, reading groups, and mindful movement.'],
   ['Kabir Mathew', ['Technology', 'Photography'], 'Learning web development and documenting everyday places.'],
   ['Tara Prasad', ['Business', 'Education'], 'Interested in mentoring, team culture, and small business operations.'],
-  ['Neha Menon', ['Arts & Culture', 'Community'], 'A culture enthusiast who enjoys making things with other people.'],
-  ['Joel Abraham', ['Technology', 'Workshops'], 'Prefers practical sessions and collaborative problem solving.'],
-  ['Maya Narayanan', ['Wellness', 'Education'], 'Interested in reflective practices and lifelong learning.'],
-  ['Rehan Ali', ['Business', 'Community'], 'Exploring social enterprises and responsible local commerce.'],
-  ['Sana Varma', ['Arts & Culture', 'Photography'], 'Enjoys design, photography, and creative experimentation.'],
-  ['Vivek Chandran', ['Technology', 'Business'], 'A curious analyst exploring AI and product development.'],
-  ['Leela Kuriakose', ['Education', 'Community'], 'Interested in community-led teaching and peer learning.'],
-  ['Farah Basheer', ['Wellness', 'Arts & Culture'], 'Enjoys yoga, writing, and creative wellbeing practices.'],
-  ['Manu Raj', ['Technology', 'Workshops'], 'Building confidence with new tools through small projects.'],
-  ['Riya Gopal', ['Business', 'Arts & Culture'], 'Interested in creative careers and independent work.'],
-  ['Siddharth Rao', ['Education', 'Technology'], 'Learning about digital accessibility and responsible technology.'],
-  ['Parvathy Mohan', ['Community', 'Workshops'], 'Likes volunteering, making, and bringing neighbours together.'],
-  ['Zoya Hussain', ['Business', 'Wellness'], 'Exploring sustainable work habits and ethical business.'],
-  ['Kiran Babu', ['Technology', 'Community'], 'A lifelong learner interested in open-source and local tech groups.'],
 ] as const;
 
 type EventDefinition = {
@@ -85,19 +82,6 @@ const eventDefinitions: EventDefinition[] = [
   { title: 'Digital Safety for Families and Communities', slug: 'demo-digital-safety', categorySlug: 'community', format: 'IN_PERSON', city: 'Palakkad', venue: 'Town Library Hall', isFree: true, price: 0, tags: ['safety', 'digital-literacy'] },
   { title: 'From Idea to Weekend Prototype', slug: 'demo-weekend-prototype', categorySlug: 'technology', format: 'IN_PERSON', city: 'Bengaluru', venue: 'Indiranagar Makerspace', isFree: false, price: 1799, tags: ['prototyping', 'technology'] },
   { title: 'Public Speaking for Thoughtful Leaders', slug: 'demo-public-speaking-leaders', categorySlug: 'business', format: 'ONLINE', city: null, venue: null, isFree: false, price: 699, tags: ['leadership', 'communication'] },
-  { title: 'Illustrated Journaling for Beginners', slug: 'demo-illustrated-journaling', categorySlug: 'arts-culture', format: 'IN_PERSON', city: 'Kottayam', venue: 'Letters & Lines Studio', isFree: true, price: 0, tags: ['journaling', 'illustration'] },
-  { title: 'Designing Better Learning Activities', slug: 'demo-learning-activities', categorySlug: 'education', format: 'HYBRID', city: 'Ernakulam', venue: 'District Learning Lab', isFree: false, price: 549, tags: ['learning-design', 'education'] },
-  { title: 'Open Source for Your First Contribution', slug: 'demo-first-open-source', categorySlug: 'technology', format: 'ONLINE', city: null, venue: null, isFree: true, price: 0, tags: ['open-source', 'coding'] },
-  { title: 'Neighbourhood Food Stories and Memory', slug: 'demo-food-stories-memory', categorySlug: 'community', format: 'IN_PERSON', city: 'Kochi', venue: 'Mattancherry Reading Room', isFree: false, price: 299, tags: ['food', 'storytelling'] },
-  { title: 'Personal Budgeting for Freelancers', slug: 'demo-budgeting-freelancers', categorySlug: 'business', format: 'ONLINE', city: null, venue: null, isFree: true, price: 0, tags: ['finance', 'freelance'] },
-  { title: 'Intro to Generative Art with Creative Code', slug: 'demo-generative-art', categorySlug: 'arts-culture', format: 'HYBRID', city: 'Chennai', venue: 'T Nagar Creative Lab', isFree: false, price: 999, tags: ['creative-code', 'art'] },
-  { title: 'First Aid for Community Event Hosts', slug: 'demo-event-host-first-aid', categorySlug: 'community', format: 'IN_PERSON', city: 'Thiruvananthapuram', venue: 'Museum Auditorium', isFree: true, price: 0, tags: ['events', 'safety'] },
-  { title: 'Collaborative Note-Taking for Teams', slug: 'demo-team-note-taking', categorySlug: 'workshops', format: 'ONLINE', city: null, venue: null, isFree: false, price: 449, tags: ['collaboration', 'tools'] },
-  { title: 'Yoga, Breath, and Sustainable Routines', slug: 'demo-yoga-sustainable-routines', categorySlug: 'wellness', format: 'IN_PERSON', city: 'Varkala', venue: 'Cliffside Community Room', isFree: false, price: 350, tags: ['yoga', 'wellness'] },
-  { title: 'Career Portfolio Clinic for Early Careers', slug: 'demo-career-portfolio-clinic', categorySlug: 'education', format: 'HYBRID', city: 'Kochi', venue: 'Kaloor Skill Studio', isFree: true, price: 0, tags: ['career', 'portfolio'] },
-  { title: 'Responsible AI: A Hands-on Discussion', slug: 'demo-responsible-ai', categorySlug: 'technology', format: 'ONLINE', city: null, venue: null, isFree: false, price: 799, tags: ['AI', 'ethics'] },
-  { title: 'Traditional Patterns in Contemporary Design', slug: 'demo-patterns-contemporary-design', categorySlug: 'arts-culture', format: 'IN_PERSON', city: 'Thrissur', venue: 'Vadakkunnathan Arts Pavilion', isFree: false, price: 650, tags: ['craft', 'design'] },
-  { title: 'Urban Gardening in Small Spaces', slug: 'demo-urban-gardening', categorySlug: 'community', format: 'IN_PERSON', city: 'Mumbai', venue: 'Dadar Neighbourhood Garden', isFree: true, price: 0, tags: ['gardening', 'community'] },
 ] as const;
 
 const dayOffset = (days: number, hour = 10) => {
@@ -109,39 +93,39 @@ const dayOffset = (days: number, hour = 10) => {
 
 function getEventStatus(index: number): EventStatus {
   if (index < 8) return 'COMPLETED';
-  if (index < 23) return 'PUBLISHED';
-  if (index < 25) return 'DRAFT';
+  if (index < 12) return 'PUBLISHED';
+  if (index < 14) return 'DRAFT';
   return 'CANCELLED';
 }
 
 function getEventStartOffset(index: number): number {
   if (index < 8) return -70 + index * 6;
-  if (index < 23) return 2 + (index - 8) * 4;
-  if (index < 25) return 14 + (index - 23) * 16;
-  return [-4, 9, 28][index - 25];
+  if (index < 12) return 2 + (index - 8) * 4;
+  if (index < 14) return 14 + (index - 12) * 16;
+  return 28;
 }
 
 function getBookingPlan(eventIndex: number, isFree: boolean, soldOut: boolean) {
   if (eventIndex < 8) {
     return Array.from({ length: 4 }, (_, slot) => ({
       slot,
-      status: 'CONFIRMED' as BookingStatus,
+      status: (isFree ? 'CONFIRMED' : 'CANCELLED') as BookingStatus,
       seats: slot === 0 ? 2 : 1,
     }));
   }
   if (soldOut) {
     return [2, 2, 2, 1, 1].map((seats, slot) => ({
       slot,
-      status: 'CONFIRMED' as BookingStatus,
+      status: (isFree ? 'CONFIRMED' : 'PENDING') as BookingStatus,
       seats,
     }));
   }
   return [
-    { slot: 0, status: 'CONFIRMED' as BookingStatus, seats: 1 },
-    { slot: 1, status: 'CONFIRMED' as BookingStatus, seats: 2 },
+    { slot: 0, status: (isFree ? 'CONFIRMED' : 'PENDING') as BookingStatus, seats: 1 },
+    { slot: 1, status: (isFree ? 'CONFIRMED' : 'PENDING') as BookingStatus, seats: 2 },
     { slot: 2, status: (isFree ? 'CONFIRMED' : 'PENDING') as BookingStatus, seats: 1 },
     { slot: 3, status: 'CANCELLED' as BookingStatus, seats: 1 },
-    { slot: 4, status: (isFree ? 'CANCELLED' : 'REFUNDED') as BookingStatus, seats: 1 },
+    { slot: 4, status: 'CANCELLED' as BookingStatus, seats: 1 },
   ];
 }
 
@@ -197,7 +181,7 @@ async function ensureUser(
   name: string,
   role: Role,
   passwordHash: string,
-  profile: { bio: string; phone: string; interests: string[] },
+  profile: { bio: string; phone: string; interests: string[]; isVerified?: boolean },
   createdEmails: string[],
 ) {
   const existing = await tx.user.findUnique({ where: { email } });
@@ -216,10 +200,38 @@ async function ensureUser(
       bio: `${DEMO_MARKER} ${profile.bio}`,
       phone: profile.phone,
       interests: profile.interests,
-      isVerified: true,
+      isVerified: profile.isVerified ?? true,
     },
   });
   createdEmails.push(email);
+  return { user, created: true };
+}
+
+async function ensureLocalAdmin(
+  tx: Prisma.TransactionClient,
+  passwordHash: string,
+) {
+  const existing = await tx.user.findUnique({ where: { email: LOCAL_ADMIN_EMAIL } });
+  if (existing) {
+    const user = await tx.user.update({
+      where: { id: existing.id },
+      data: { role: Role.ADMIN, passwordHash, isVerified: true },
+    });
+    return { user, created: false };
+  }
+
+  const user = await tx.user.create({
+    data: {
+      email: LOCAL_ADMIN_EMAIL,
+      name: 'Eventora Local Admin',
+      role: Role.ADMIN,
+      passwordHash,
+      bio: `${DEMO_MARKER} Local development administrator.`,
+      phone: '+91 00000 10000',
+      interests: ['Community', 'Technology'],
+      isVerified: true,
+    },
+  });
   return { user, created: true };
 }
 
@@ -245,15 +257,20 @@ async function createNotificationIfMissing(
 
 async function main() {
   const url = safeLocalDatabaseUrl();
+  const localAdminPassword = process.env.EVENTORA_LOCAL_ADMIN_PASSWORD;
+  if (!localAdminPassword || localAdminPassword.length < 8) {
+    throw new Error('EVENTORA_LOCAL_ADMIN_PASSWORD must be supplied for the local admin account.');
+  }
+  const localAdminPasswordHash = await bcrypt.hash(localAdminPassword, 12);
   await prisma.$connect();
-  const [identity] = await prisma.$queryRaw<Array<{ database: string; address: string | null; port: number }>>`
-    SELECT current_database() AS database, inet_server_addr()::text AS address, inet_server_port() AS port
+  const [identity] = await prisma.$queryRaw<Array<{ database: string; port: number }>>`
+    SELECT current_database() AS database, inet_server_port() AS port
   `;
   if (
     identity?.database !== 'eventora_local' ||
-    !identity.address?.startsWith('127.0.0.1') ||
-    identity.port !== 5433 ||
-    url.hostname !== '127.0.0.1'
+    identity.port !== 5432 ||
+    url.hostname !== '127.0.0.1' ||
+    url.port !== '5433'
   ) {
     throw new Error('Refusing to seed: connected PostgreSQL identity is not the verified local Eventora database.');
   }
@@ -265,20 +282,12 @@ async function main() {
   const counts = await prisma.$transaction(async (tx) => {
     const seededUsers = new Map<string, { id: string; role: Role; name: string }>();
     let usersCreated = 0;
-    const admin = await ensureUser(
-      tx,
-      'local-admin@eventora-demo.example.com',
-      'Eventora Local Demo Admin',
-      'ADMIN',
-      passwordHash,
-      { bio: 'Local-only fictional administrator account.', phone: '+91 00000 10000', interests: ['Community', 'Technology'] },
-      createdEmails,
-    );
+    const admin = await ensureLocalAdmin(tx, localAdminPasswordHash);
     seededUsers.set(admin.user.email, admin.user);
     usersCreated += Number(admin.created);
 
     for (let index = 0; index < organizerProfiles.length; index++) {
-      const [name, handle, city, interests, bio] = organizerProfiles[index];
+      const [name, handle, city, interests, bio, organization] = organizerProfiles[index];
       const email = `${handle}@eventora-demo.example.com`;
       const result = await ensureUser(
         tx,
@@ -286,7 +295,12 @@ async function main() {
         name,
         'ORGANIZER',
         passwordHash,
-        { bio: `${bio} Based in ${city}.`, phone: `+91 00000 ${20000 + index}`, interests: [...interests] },
+        {
+          bio: `${bio} Organization: ${organization}. Based in ${city}.`,
+          phone: `+91 00000 ${20000 + index}`,
+          interests: [...interests],
+          isVerified: index % 2 === 0,
+        },
         createdEmails,
       );
       seededUsers.set(email, result.user);
@@ -302,7 +316,7 @@ async function main() {
         name,
         'ATTENDEE',
         passwordHash,
-        { bio, phone: `+91 00000 ${30000 + index}`, interests: [...interests] },
+        { bio, phone: `+91 00000 ${30000 + index}`, interests: [...interests], isVerified: index % 2 === 0 },
         createdEmails,
       );
       seededUsers.set(email, result.user);
@@ -365,6 +379,7 @@ async function main() {
         data: {
           title: definition.title,
           slug: definition.slug,
+          coverImage: categoryCoverImages[definition.categorySlug] || null,
           description: `${DEMO_MARKER} Join a welcoming, practical session designed for curious learners. This fictional event includes guided activities, time for questions, and useful take-home resources.`,
           shortDescription: `A fictional local demo event: ${definition.title}.`,
           categoryId: category.id,
@@ -377,7 +392,7 @@ async function main() {
           venueName: definition.venue,
           venueAddress: definition.venue ? `${definition.venue}, ${definition.city}` : null,
           city: definition.city,
-          state: definition.city ? 'Kerala' : null,
+          state: !definition.city ? null : definition.city === 'Bengaluru' ? 'Karnataka' : 'Kerala',
           country: 'India',
           onlineLink: definition.format !== 'IN_PERSON' ? `https://meet.example.com/${definition.slug}` : null,
           totalCapacity: capacity,
@@ -405,6 +420,8 @@ async function main() {
     let reviewsCreated = 0;
     let checkInsCreated = 0;
     let notificationsCreated = 0;
+    let supportRequestsCreated = 0;
+    let supportNotesCreated = 0;
     const bookingByEventAndSlot = new Map<string, { id: string; userId: string; status: BookingStatus; seats: number; reference: string }>();
 
     for (let eventIndex = 0; eventIndex < events.length; eventIndex++) {
@@ -414,7 +431,7 @@ async function main() {
       if (event.status === 'PUBLISHED' || event.status === 'COMPLETED') {
         const plan = getBookingPlan(eventIndex, event.isFree, soldOut);
         for (const bookingPlan of plan) {
-          const attendee = attendees[(eventIndex * 7 + bookingPlan.slot * 5) % attendees.length];
+          const attendee = attendees[(eventIndex * 5 + bookingPlan.slot) % attendees.length];
           const existingBooking = await tx.booking.findUnique({
             where: { userId_eventId: { userId: attendee.id, eventId: event.id } },
           });
@@ -433,26 +450,19 @@ async function main() {
           bookingsCreated += Number(!existingBooking);
 
           let paymentStatus: PaymentStatus | null = null;
-          if (!event.isFree) {
-            if (booking.status === 'CONFIRMED') paymentStatus = 'CAPTURED';
-            else if (booking.status === 'PENDING') paymentStatus = 'PENDING';
-            else if (booking.status === 'REFUNDED') paymentStatus = 'REFUNDED';
-            else if (booking.status === 'CANCELLED') paymentStatus = 'FAILED';
-          }
+          if (!event.isFree && booking.status === 'PENDING') paymentStatus = 'PENDING';
           if (paymentStatus) {
             const existingPayment = await tx.payment.findUnique({ where: { bookingId: booking.id } });
             const payment = existingPayment || await tx.payment.create({
               data: {
                 bookingId: booking.id,
                 razorpayOrderId: `demo_order_${event.slug}_${bookingPlan.slot}`,
-                razorpayPaymentId: paymentStatus === 'CAPTURED' || paymentStatus === 'REFUNDED'
-                  ? `demo_payment_${event.slug}_${bookingPlan.slot}`
-                  : null,
-                razorpaySignature: paymentStatus === 'CAPTURED' ? 'local-demo-signature' : null,
+                razorpayPaymentId: null,
+                razorpaySignature: null,
                 amount: event.price * booking.seats,
                 currency: event.currency,
                 status: paymentStatus,
-                webhookVerified: paymentStatus === 'CAPTURED' || paymentStatus === 'REFUNDED',
+                webhookVerified: false,
               },
             });
             paymentsCreated += Number(!existingPayment);
@@ -515,7 +525,7 @@ async function main() {
         });
         void certificate;
       }
-      if (eventIndex % 2 === 0) {
+      if (event.status === 'COMPLETED') {
         const booking = bookingByEventAndSlot.get(`${event.slug}:0`);
         const ticket = booking
           ? await tx.ticket.findFirst({ where: { bookingId: booking.id }, orderBy: { seatNumber: 'asc' } })
@@ -542,7 +552,7 @@ async function main() {
 
     const soldOutEvent = events[8];
     for (let index = 0; index < 4; index++) {
-      const attendee = attendees[20 + index];
+      const attendee = attendees[5 + index];
       const existing = await tx.waitlistEntry.findUnique({
         where: { userId_eventId: { userId: attendee.id, eventId: soldOutEvent.id } },
       });
@@ -560,7 +570,7 @@ async function main() {
       }
     }
 
-    for (const eventIndex of [9, 12, 15, 20]) {
+    for (const eventIndex of [9, 10, 12, 14]) {
       const event = events[eventIndex];
       for (const attendeeIndex of [0, 3, 7]) {
         const attendee = attendees[attendeeIndex];
@@ -573,7 +583,7 @@ async function main() {
       }
     }
 
-    for (const eventIndex of [8, 9, 10, 12, 15]) {
+    for (const eventIndex of [8, 9, 10, 12, 14]) {
       const event = events[eventIndex];
       const attendee = attendees[(eventIndex * 3) % attendees.length];
       const notificationTypes = [
@@ -635,6 +645,73 @@ async function main() {
       }
     }
 
+    const supportRequestDefinitions = [
+      {
+        reference: 'DEMO-SUPPORT-001',
+        requester: attendees[0],
+        event: events[1],
+        booking: bookingByEventAndSlot.get(`${events[1].slug}:0`),
+        subject: 'Demo support: finding a workshop ticket',
+        description: `${DEMO_MARKER} I am checking where the ticket for this fictional workshop appears in my dashboard.`,
+        category: 'BOOKING' as const,
+        status: 'NEW' as const,
+        resolvedAt: null,
+        noteBody: `${DEMO_MARKER} Attendee request for help locating a confirmed local demo ticket.`,
+        noteAuthorId: attendees[0].id,
+      },
+      {
+        reference: 'DEMO-SUPPORT-002',
+        requester: attendees[1],
+        event: events[9],
+        booking: bookingByEventAndSlot.get(`${events[9].slug}:0`),
+        subject: 'Demo support: pending test payment',
+        description: `${DEMO_MARKER} This fictional booking is pending and has no captured payment.`,
+        category: 'PAYMENT' as const,
+        status: 'RESOLVED' as const,
+        resolvedAt: dayOffset(-1),
+        noteBody: `${DEMO_MARKER} Admin confirmed that this local test payment remains pending and no charge was made.`,
+        noteAuthorId: admin.user.id,
+      },
+    ];
+    for (const definition of supportRequestDefinitions) {
+      if (!definition.booking) throw new Error('A demo support request references a missing booking.');
+      let request = await tx.supportRequest.findUnique({ where: { reference: definition.reference } });
+      if (request && !request.description.startsWith(DEMO_MARKER)) {
+        throw new Error('A non-demo support request conflicts with a reserved demo reference; no existing data was changed.');
+      }
+      if (!request) {
+        request = await tx.supportRequest.create({
+          data: {
+            reference: definition.reference,
+            requesterId: definition.requester.id,
+            subject: definition.subject,
+            description: definition.description,
+            category: definition.category,
+            status: definition.status,
+            eventId: definition.event.id,
+            bookingId: definition.booking.id,
+            assignedAdminId: definition.status === 'RESOLVED' ? admin.user.id : null,
+            resolvedAt: definition.resolvedAt,
+          },
+        });
+        supportRequestsCreated++;
+      }
+      const existingNote = await tx.supportNote.findFirst({
+        where: { requestId: request.id, authorId: definition.noteAuthorId, body: definition.noteBody },
+      });
+      if (!existingNote) {
+        await tx.supportNote.create({
+          data: {
+            requestId: request.id,
+            authorId: definition.noteAuthorId,
+            body: definition.noteBody,
+            internal: false,
+          },
+        });
+        supportNotesCreated++;
+      }
+    }
+
     saveCredentials(password, createdEmails);
 
     return {
@@ -648,14 +725,17 @@ async function main() {
       checkInsCreated,
       proposalsCreated,
       notificationsCreated,
+      supportRequestsCreated,
+      supportNotesCreated,
     };
   }, { maxWait: 15_000, timeout: 120_000 });
 
   console.log('Local Eventora demo dataset seeding completed.');
-  console.log(`Created users: ${counts.usersCreated} (1 admin, 5 organizers, 24 attendees when all were missing).`);
+  console.log(`Created users: ${counts.usersCreated} (1 admin, 5 organizers, 10 attendees when all were missing).`);
   console.log(`Categories: ${counts.categories}; events: ${counts.eventsCreated}; bookings: ${counts.bookingsCreated}.`);
   console.log(`Payments: ${counts.paymentsCreated}; tickets: ${counts.ticketsCreated}; reviews: ${counts.reviewsCreated}; check-ins: ${counts.checkInsCreated}.`);
   console.log(`Proposals: ${counts.proposalsCreated}; notifications created: ${counts.notificationsCreated}.`);
+  console.log(`Support requests: ${counts.supportRequestsCreated}; support notes: ${counts.supportNotesCreated}.`);
   console.log(`Local-only credentials saved in gitignored ${path.relative(process.cwd(), credentialsPath)}; password was not printed.`);
 }
 

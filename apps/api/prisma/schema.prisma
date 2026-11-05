@@ -99,7 +99,7 @@ model User {
   waitlistEntries   WaitlistEntry[]
   proposals         Proposal[]
   certificates      Certificate[]
-  passwordResetOTPs PasswordResetOTP[]
+  passwordResetTokens PasswordResetToken[]
   checkInsPerformed CheckIn[]        @relation("CheckInStaff")
   savedEvents       SavedEvent[]
   notifications     InAppNotification[]
@@ -342,17 +342,19 @@ model CheckIn {
   @@index([eventId])
 }
 
-model PasswordResetOTP {
+model PasswordResetToken {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  otp       String
+  tokenHash String
   attempts  Int      @default(0)
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([tokenHash])
+  @@map("PasswordResetOTP")
 }
 
 model SavedEvent {

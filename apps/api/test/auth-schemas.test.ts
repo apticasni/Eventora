@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   CreateBookingSchema,
+  ForgotPasswordSchema,
   RegisterSchema,
+  ResetPasswordSchema,
   SaveEventSchema,
   SearchEventsSchema,
   UpdateProfileSchema,
@@ -9,6 +11,14 @@ import {
 } from '@eventora/shared';
 
 describe('shared validation schemas', () => {
+  it('validates password recovery addresses and high-entropy reset tokens', () => {
+    expect(ForgotPasswordSchema.safeParse({ email: ' person@example.com ' }).success).toBe(true);
+    expect(ForgotPasswordSchema.safeParse({ email: 'not-an-email' }).success).toBe(false);
+    expect(ResetPasswordSchema.safeParse({ token: 'a'.repeat(64), newPassword: 'password123' }).success).toBe(true);
+    expect(ResetPasswordSchema.safeParse({ token: '123456', newPassword: 'password123' }).success).toBe(false);
+    expect(ResetPasswordSchema.safeParse({ token: 'a'.repeat(64), newPassword: 'short' }).success).toBe(false);
+  });
+
   it('rejects admin self-registration', () => {
     const result = RegisterSchema.safeParse({
       name: 'Hacker',

@@ -42,6 +42,41 @@ describe('Google OAuth callback routing', () => {
     expect(redirect.searchParams.get('google')).toBe('cancelled');
   });
 
+  it('preserves a validated relative redirect through the OAuth state cookie', async () => {
+    vi.stubEnv('FRONTEND_URL', 'http://localhost:3000');
+    const origin = await startCallbackServer();
+    const encodedRedirect = Buffer.from('/events?category=design').toString('base64url');
+
+    const response = await fetch(
+      `${origin}/api/auth/google/callback?error=access_denied`,
+      {
+        redirect: 'manual',
+        headers: { Cookie: `eventora_google_oauth=state.verifier.${encodedRedirect}` },
+      },
+    );
+
+    const redirect = new URL(response.headers.get('location')!);
+    expect(redirect.searchParams.get('google')).toBe('cancelled');
+    expect(redirect.searchParams.get('redirect')).toBe('/events?category=design');
+  });
+
+  it('replaces an unsafe redirect stored in the OAuth cookie with the safe default', async () => {
+    vi.stubEnv('FRONTEND_URL', 'http://localhost:3000');
+    const origin = await startCallbackServer();
+    const encodedRedirect = Buffer.from('//attacker.example').toString('base64url');
+
+    const response = await fetch(
+      `${origin}/api/auth/google/callback?error=access_denied`,
+      {
+        redirect: 'manual',
+        headers: { Cookie: `eventora_google_oauth=state.verifier.${encodedRedirect}` },
+      },
+    );
+
+    expect(new URL(response.headers.get('location')!).searchParams.get('redirect'))
+      .toBe('/dashboard/bookings');
+  });
+
   it('rejects callbacks without a matching state cookie', async () => {
     vi.stubEnv('FRONTEND_URL', 'http://localhost:3000');
     const origin = await startCallbackServer();
