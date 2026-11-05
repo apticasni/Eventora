@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Event, Category } from '@eventora/shared';
 import { api } from '@/lib/api';
-import { MOCK_EVENTS, MOCK_CATEGORIES } from '@/lib/mockData';
 import { EventCard } from '@/components/events/EventCard';
 import { EventCoverImage } from '@/components/events/EventCoverImage';
 import { Avatar } from '@/components/ui/Avatar';
@@ -37,9 +36,9 @@ import {
 const categoryStyles: Record<string, { icon: typeof Code2; color: string }> = {
   technology: { icon: Code2, color: 'bg-blue-50 text-blue-700 ring-blue-100' },
   design: { icon: Palette, color: 'bg-violet-50 text-violet-700 ring-violet-100' },
+  'creative-arts': { icon: Camera, color: 'bg-amber-50 text-amber-700 ring-amber-100' },
   business: { icon: Briefcase, color: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
-  'health-wellness': { icon: Heart, color: 'bg-rose-50 text-rose-700 ring-rose-100' },
-  photography: { icon: Camera, color: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  wellness: { icon: Heart, color: 'bg-rose-50 text-rose-700 ring-rose-100' },
   music: { icon: Music, color: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-100' },
   cooking: { icon: ChefHat, color: 'bg-orange-50 text-orange-700 ring-orange-100' },
   leadership: { icon: Rocket, color: 'bg-cyan-50 text-cyan-700 ring-cyan-100' },
@@ -49,8 +48,8 @@ const categoryDescriptions: Record<string, string> = {
   technology: 'Build practical skills in software, AI and emerging tech.',
   design: 'Create thoughtful digital products and design systems.',
   business: 'Turn ambitious ideas into sustainable growth.',
-  'health-wellness': 'Make space for mindfulness, movement and wellbeing.',
-  photography: 'Tell richer stories through the art of photography.',
+  'creative-arts': 'Practice photography, writing, ceramics and visual storytelling.',
+  wellness: 'Make space for mindfulness, movement and wellbeing.',
   music: 'Explore instruments, production and sound.',
   cooking: 'Learn techniques and recipes from working chefs.',
   leadership: 'Lead teams with clarity, empathy and purpose.',
@@ -60,9 +59,10 @@ export default function HomePage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [events, setEvents] = useState<Event[]>(MOCK_EVENTS);
-  const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES);
-  const [loading, setLoading] = useState(false);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -71,14 +71,17 @@ export default function HomePage() {
           api.events.list({ limit: 12 }),
           api.events.categories(),
         ]);
-        if (evRes.success && evRes.data?.items?.length) {
-          setEvents(evRes.data.items);
-        }
-        if (catRes.success && catRes.data?.length) {
-          setCategories(catRes.data);
+        setEvents(evRes.success ? evRes.data?.items || [] : []);
+        setCategories(catRes.success ? catRes.data || [] : []);
+        if (!evRes.success || !catRes.success) {
+          setLoadError('Some discovery data could not be loaded. Please try again.');
         }
       } catch {
-        // Fallback to rich mock data
+        setEvents([]);
+        setCategories([]);
+        setLoadError('Discovery data could not be loaded. Please check your connection.');
+      } finally {
+        setLoading(false);
       }
     }
     loadData();
@@ -169,7 +172,7 @@ export default function HomePage() {
           </div>
 
           {/* Right Hero: Spotlight Event Frame */}
-          {heroFeatured && (
+          {heroFeatured ? (
             <div className="lg:col-span-5 relative">
               <div className="absolute -inset-2 bg-gradient-to-tr from-terracotta/20 to-emerald-200/20 rounded-3xl blur-xl" />
               <div className="relative bg-white rounded-3xl border border-[#ded7ca] shadow-warm-lg p-6 space-y-5">
@@ -231,6 +234,10 @@ export default function HomePage() {
                   </Link>
                 </div>
               </div>
+            </div>
+          ) : (
+            <div className="lg:col-span-5 rounded-3xl border border-[#ded7ca] bg-white p-8 text-center text-sm text-[#71695d] shadow-warm">
+              {loading ? 'Loading featured experiences…' : 'No published experiences are available yet.'}
             </div>
           )}
         </div>
@@ -313,6 +320,11 @@ export default function HomePage() {
             <EventCard key={event.id} event={event} />
           ))}
         </div>
+        {!loading && !featuredEvents.length && (
+          <p className="rounded-2xl border border-[#ded7ca] bg-white p-8 text-center text-sm text-[#71695d]">
+            {loadError || 'There are no featured experiences right now. Browse the full event catalog.'}
+          </p>
+        )}
       </section>
 
       {/* 4. Upcoming Events with Category Filtering */}
@@ -360,6 +372,11 @@ export default function HomePage() {
             <EventCard key={event.id} event={event} />
           ))}
         </div>
+        {!loading && !filteredUpcoming.length && (
+          <p className="rounded-2xl border border-[#ded7ca] bg-white p-8 text-center text-sm text-[#71695d]">
+            {loadError || 'No upcoming experiences are available yet.'}
+          </p>
+        )}
 
         <div className="mt-12 text-center">
           <Link

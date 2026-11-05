@@ -369,7 +369,7 @@ export default function AdminDashboardPage() {
         <ShieldAlert className="mx-auto h-10 w-10 text-terracotta" />
         <h1 className="mt-4 font-serif text-3xl font-bold text-forest">Admin access required</h1>
         <p className="mt-2 text-sm text-[#71695d]">Sign in with an authorized Eventora administrator account to continue.</p>
-        <Link href="/login" className={`${buttonClass} mt-6`}>Go to sign in</Link>
+        <Link href="/login?redirect=%2Fadmin" className={`${buttonClass} mt-6`}>Go to sign in</Link>
       </main>
     );
   }

@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
-import { BookingStatus, EventFormat, EventStatus, PaymentStatus, Prisma, PrismaClient, Role } from '@prisma/client';
+import { BookingStatus, EventFormat, EventStatus, Prisma, PrismaClient, Role } from '@prisma/client';
 import { issueTicketsIfMissing } from '../services/tickets';
 
 const prisma = new PrismaClient();
@@ -129,6 +129,13 @@ function getBookingPlan(eventIndex: number, isFree: boolean, soldOut: boolean) {
   ];
 }
 
+function isSupportedLocalDatabaseEndpoint(url: URL): boolean {
+  const hostLocal = ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
+    && url.port === '5433';
+  const composeLocal = url.hostname === 'postgres' && url.port === '5432';
+  return hostLocal || composeLocal;
+}
+
 function safeLocalDatabaseUrl(): URL {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Demo dataset seeding is disabled in production.');
@@ -142,8 +149,8 @@ function safeLocalDatabaseUrl(): URL {
     throw new Error('DATABASE_URL is invalid; local demo seeding was not run.');
   }
   const database = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
-  if (!['localhost', '127.0.0.1', '::1'].includes(url.hostname) || url.port !== '5433' || database !== 'eventora_local') {
-    throw new Error('Refusing to seed: DATABASE_URL must target eventora_local on localhost port 5433.');
+  if (!isSupportedLocalDatabaseEndpoint(url) || database !== 'eventora_local') {
+    throw new Error('Refusing to seed: DATABASE_URL must target eventora_local on localhost port 5433 or the local Docker postgres service.');
   }
   return url;
 }
@@ -269,8 +276,7 @@ async function main() {
   if (
     identity?.database !== 'eventora_local' ||
     identity.port !== 5432 ||
-    url.hostname !== '127.0.0.1' ||
-    url.port !== '5433'
+    !isSupportedLocalDatabaseEndpoint(url)
   ) {
     throw new Error('Refusing to seed: connected PostgreSQL identity is not the verified local Eventora database.');
   }
@@ -415,7 +421,6 @@ async function main() {
     }
 
     let bookingsCreated = 0;
-    let paymentsCreated = 0;
     let ticketsCreated = 0;
     let reviewsCreated = 0;
     let checkInsCreated = 0;
@@ -448,25 +453,6 @@ async function main() {
           });
           bookingByEventAndSlot.set(`${event.slug}:${bookingPlan.slot}`, booking);
           bookingsCreated += Number(!existingBooking);
-
-          let paymentStatus: PaymentStatus | null = null;
-          if (!event.isFree && booking.status === 'PENDING') paymentStatus = 'PENDING';
-          if (paymentStatus) {
-            const existingPayment = await tx.payment.findUnique({ where: { bookingId: booking.id } });
-            const payment = existingPayment || await tx.payment.create({
-              data: {
-                bookingId: booking.id,
-                razorpayOrderId: `demo_order_${event.slug}_${bookingPlan.slot}`,
-                razorpayPaymentId: null,
-                razorpaySignature: null,
-                amount: event.price * booking.seats,
-                currency: event.currency,
-                status: paymentStatus,
-                webhookVerified: false,
-              },
-            });
-            paymentsCreated += Number(!existingPayment);
-          }
 
           if (booking.status === 'CONFIRMED') {
             const before = await tx.ticket.count({ where: { bookingId: booking.id } });
@@ -719,7 +705,6 @@ async function main() {
       categories: categories.length,
       eventsCreated,
       bookingsCreated,
-      paymentsCreated,
       ticketsCreated,
       reviewsCreated,
       checkInsCreated,
@@ -733,7 +718,7 @@ async function main() {
   console.log('Local Eventora demo dataset seeding completed.');
   console.log(`Created users: ${counts.usersCreated} (1 admin, 5 organizers, 10 attendees when all were missing).`);
   console.log(`Categories: ${counts.categories}; events: ${counts.eventsCreated}; bookings: ${counts.bookingsCreated}.`);
-  console.log(`Payments: ${counts.paymentsCreated}; tickets: ${counts.ticketsCreated}; reviews: ${counts.reviewsCreated}; check-ins: ${counts.checkInsCreated}.`);
+  console.log(`No mock payment records were created. Tickets: ${counts.ticketsCreated}; reviews: ${counts.reviewsCreated}; check-ins: ${counts.checkInsCreated}.`);
   console.log(`Proposals: ${counts.proposalsCreated}; notifications created: ${counts.notificationsCreated}.`);
   console.log(`Support requests: ${counts.supportRequestsCreated}; support notes: ${counts.supportNotesCreated}.`);
   console.log(`Local-only credentials saved in gitignored ${path.relative(process.cwd(), credentialsPath)}; password was not printed.`);

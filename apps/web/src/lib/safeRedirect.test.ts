@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_AUTH_REDIRECT, getSafeRedirectPath } from './safeRedirect';
+import { DEFAULT_AUTH_REDIRECT, getPostAuthRedirect, getSafeRedirectPath } from './safeRedirect';
 
 describe('safe post-authentication redirects', () => {
+  it('routes admins to the admin dashboard by default and other accounts to bookings', () => {
+    expect(getPostAuthRedirect('ADMIN')).toBe('/admin');
+    expect(getPostAuthRedirect('ATTENDEE')).toBe(DEFAULT_AUTH_REDIRECT);
+  });
+
+  it('preserves safe requested destinations for every role', () => {
+    expect(getPostAuthRedirect('ADMIN', '/admin#events')).toBe('/admin#events');
+    expect(getPostAuthRedirect('ATTENDEE', '/events?type=workshop')).toBe('/events?type=workshop');
+    expect(getPostAuthRedirect('ADMIN', '//outside.test')).toBe('/admin');
+  });
+
   it('allows same-origin relative paths with query strings and fragments', () => {
     expect(getSafeRedirectPath('/events?category=design#upcoming'))
       .toBe('/events?category=design#upcoming');

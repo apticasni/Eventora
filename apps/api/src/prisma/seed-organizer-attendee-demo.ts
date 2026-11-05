@@ -4,7 +4,6 @@ import {
   BookingStatus,
   EventFormat,
   EventStatus,
-  PaymentStatus,
   Prisma,
   PrismaClient,
   Role,
@@ -397,7 +396,6 @@ async function main() {
     }
 
     let bookingsCreated = 0;
-    let paymentsCreated = 0;
     let ticketsCreated = 0;
     let reviewsCreated = 0;
     let checkInsCreated = 0;
@@ -408,6 +406,7 @@ async function main() {
       const definition = events[index];
       const event = eventBySlug.get(definition.slug);
       if (!event || definition.status === 'DRAFT') continue;
+      if (!event.isFree && definition.status === 'COMPLETED') continue;
 
       const attendeeIndexes = [index % attendees.length];
       if (index === 0 || index % 3 === 1) {
@@ -433,7 +432,11 @@ async function main() {
 
         const isCancelled = index === 8 && attendeePosition === 1;
         const isPending = index === 5 && attendeePosition === 0;
-        const bookingStatus: BookingStatus = isCancelled ? 'CANCELLED' : isPending ? 'PENDING' : 'CONFIRMED';
+        const bookingStatus: BookingStatus = isCancelled
+          ? 'CANCELLED'
+          : event.isFree && !isPending
+            ? 'CONFIRMED'
+            : 'PENDING';
         const booking = await tx.booking.create({
           data: {
             userId: user.id,
@@ -457,32 +460,6 @@ async function main() {
             data: { bookedSeats: { increment: booking.seats } },
           });
           event.bookedSeats += booking.seats;
-        }
-
-        let paymentStatus: PaymentStatus | null = null;
-        if (!event.isFree) {
-          paymentStatus = booking.status === 'PENDING'
-            ? 'PENDING'
-            : booking.status === 'CANCELLED'
-              ? 'FAILED'
-              : 'CAPTURED';
-        }
-        if (paymentStatus) {
-          await tx.payment.create({
-            data: {
-              bookingId: booking.id,
-              razorpayOrderId: `demo_order_${definition.slug}_${attendee.firstName.toLowerCase()}`,
-              razorpayPaymentId: paymentStatus === 'CAPTURED'
-                ? `demo_payment_${definition.slug}_${attendee.firstName.toLowerCase()}`
-                : null,
-              razorpaySignature: paymentStatus === 'CAPTURED' ? 'local-demo-signature' : null,
-              amount: event.price,
-              currency: event.currency,
-              status: paymentStatus,
-              webhookVerified: paymentStatus === 'CAPTURED',
-            },
-          });
-          paymentsCreated++;
         }
 
         if (booking.status === 'CONFIRMED') {
@@ -609,7 +586,6 @@ async function main() {
       usersCreated,
       eventsCreated,
       bookingsCreated,
-      paymentsCreated,
       ticketsCreated,
       reviewsCreated,
       checkInsCreated,
@@ -620,7 +596,7 @@ async function main() {
 
   console.log('Local organizer/attendee development seed completed.');
   console.log(`Created users: ${created.usersCreated} (5 organizers, 5 attendees when all were missing).`);
-  console.log(`Created events: ${created.eventsCreated}; bookings: ${created.bookingsCreated}; payments: ${created.paymentsCreated}.`);
+  console.log(`Created events: ${created.eventsCreated}; bookings: ${created.bookingsCreated}; no mock payment records were created.`);
   console.log(`Created tickets: ${created.ticketsCreated}; reviews: ${created.reviewsCreated}; check-ins: ${created.checkInsCreated}.`);
   console.log(`Created saved events: ${created.savedEventsCreated}; notifications: ${created.notificationsCreated}.`);
   console.log('Local-only password convention: each account first name followed by @1234. Passwords are bcrypt-hashed and never printed.');

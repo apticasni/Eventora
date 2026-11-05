@@ -28,25 +28,27 @@ function getOAuthClient(config = getOAuthConfig()): OAuth2Client {
 
 function getFrontendLoginUrl(
   status: 'success' | 'cancelled' | 'failed',
-  redirect = DEFAULT_AUTH_REDIRECT,
+  redirect?: string,
 ): string {
   const frontendOrigin = (process.env.FRONTEND_URL || 'http://localhost:3000')
     .split(',')[0]
     .trim();
   const loginUrl = new URL('/login', frontendOrigin);
   loginUrl.searchParams.set('google', status);
-  loginUrl.searchParams.set('redirect', getSafeRedirectPath(redirect));
+  if (redirect) loginUrl.searchParams.set('redirect', getSafeRedirectPath(redirect));
   return loginUrl.toString();
 }
 
-function getRedirectFromStateCookie(storedState: unknown): string {
-  if (typeof storedState !== 'string') return DEFAULT_AUTH_REDIRECT;
+function getRedirectFromStateCookie(storedState: unknown): string | undefined {
+  if (typeof storedState !== 'string') return undefined;
   const [, , encodedRedirect, ...extra] = storedState.split('.');
-  if (!encodedRedirect || extra.length) return DEFAULT_AUTH_REDIRECT;
+  if (encodedRedirect === undefined || extra.length) return undefined;
+  if (encodedRedirect === '-') return undefined;
+  if (!encodedRedirect) return undefined;
   try {
     return getSafeRedirectPath(Buffer.from(encodedRedirect, 'base64url').toString('utf8'));
   } catch {
-    return DEFAULT_AUTH_REDIRECT;
+    return undefined;
   }
 }
 
@@ -72,10 +74,14 @@ googleAuthRouter.get('/', async (req: Request, res: Response, next: NextFunction
     const state = randomBytes(32).toString('base64url');
     const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
     const cookieOptions = getCookieOptions();
-    const requestedRedirect = getSafeRedirectPath(
-      typeof req.query.redirect === 'string' ? req.query.redirect : null,
-    );
-    const encodedRedirect = Buffer.from(requestedRedirect).toString('base64url');
+    const requestedRedirect = typeof req.query.redirect === 'string'
+      ? getSafeRedirectPath(req.query.redirect)
+      : undefined;
+    // Keep a non-empty third state-cookie segment when there is no explicit
+    // destination; the callback needs to distinguish that from a malformed cookie.
+    const encodedRedirect = requestedRedirect
+      ? Buffer.from(requestedRedirect).toString('base64url')
+      : '-';
 
     res.cookie(STATE_COOKIE, `${state}.${codeVerifier}.${encodedRedirect}`, {
       ...cookieOptions,
@@ -168,7 +174,10 @@ googleAuthRouter.get('/callback', async (req: Request, res: Response) => {
     });
 
     res.cookie('token', signToken({ userId: user.id, email: user.email, role: user.role }), getCookieOptions());
-    res.redirect(getFrontendLoginUrl('success', redirect));
+    res.redirect(getFrontendLoginUrl(
+      'success',
+      redirect || (user.role === Role.ADMIN ? '/admin' : DEFAULT_AUTH_REDIRECT),
+    ));
   } catch (error) {
     if (error instanceof GoogleAccountError) {
       res.redirect(getFrontendLoginUrl('failed', redirect));

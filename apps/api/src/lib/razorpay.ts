@@ -1,14 +1,32 @@
 import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler';
 
-export function isRazorpayLiveConfigured(): boolean {
+function isPlaceholder(value: string): boolean {
+  return !value || /sample|placeholder|your[-_ ]|xxxx|<|>|replace/i.test(value);
+}
+
+export function isRazorpayTestConfigured(): boolean {
   const keyId = process.env.RAZORPAY_KEY_ID || '';
   const secret = process.env.RAZORPAY_KEY_SECRET || '';
-  if (!keyId || !secret) return false;
-  if (keyId.includes('sample') || secret.includes('sample') || keyId.includes('xxxxxxxxxxxx')) {
-    return false;
-  }
-  return keyId.startsWith('rzp_test_');
+  return keyId.startsWith('rzp_test_') && !isPlaceholder(keyId) && !isPlaceholder(secret);
+}
+
+export function isRazorpayWebhookConfigured(): boolean {
+  return isRazorpayTestConfigured() && !isPlaceholder(process.env.RAZORPAY_WEBHOOK_SECRET || '');
+}
+
+export function isRazorpayOrderId(value: string): boolean {
+  return /^order_[A-Za-z0-9]+$/.test(value);
+}
+
+export function isCapturedRazorpayPayment(
+  payment: { status: string; order_id: string | null; amount: number; currency: string },
+  expected: { orderId: string; amount: number; currency: string },
+): boolean {
+  return payment.status === 'captured' &&
+    payment.order_id === expected.orderId &&
+    payment.amount === expected.amount &&
+    payment.currency === expected.currency;
 }
 
 export function verifyRazorpaySignature(
@@ -45,7 +63,7 @@ export function verifyWebhookSignature(
 export function getRazorpayInstance() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const Razorpay = require('razorpay');
-  if (!isRazorpayLiveConfigured()) {
+  if (!isRazorpayTestConfigured()) {
     throw new AppError(503, 'Payment service not configured. Set valid Razorpay test keys.');
   }
   return new Razorpay({

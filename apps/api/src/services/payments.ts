@@ -8,6 +8,8 @@ export async function confirmPaidBooking(opts: {
   razorpayOrderId: string;
   razorpayPaymentId: string;
   razorpaySignature?: string;
+  amountPaise?: number;
+  currency?: string;
   webhookVerified?: boolean;
   userId?: string;
 }) {
@@ -25,52 +27,75 @@ export async function confirmPaidBooking(opts: {
     if (booking.payment.amount !== booking.totalAmount || booking.payment.currency !== booking.currency) {
       throw new AppError(409, 'Payment amount or currency does not match this booking.');
     }
+    if (
+      (opts.amountPaise !== undefined && opts.amountPaise !== Math.round(booking.totalAmount * 100)) ||
+      (opts.currency !== undefined && opts.currency !== booking.currency)
+    ) {
+      throw new AppError(409, 'Razorpay payment amount or currency does not match this booking.');
+    }
     if (booking.status === 'CANCELLED') {
       throw new AppError(400, 'Cannot confirm a cancelled booking.');
-    }
-
-    if (booking.status === 'CONFIRMED' && booking.payment.status === 'CAPTURED') {
-      const tickets = await issueTicketsIfMissing(tx, booking);
-      return { booking, tickets, alreadyConfirmed: true };
     }
 
     await tx.$queryRaw`
       SELECT id FROM "Event" WHERE id = ${booking.eventId} FOR UPDATE
     `;
 
+    // Re-read after the shared event lock so duplicate or concurrent callbacks see the
+    // winning transaction before creating tickets or sending another confirmation.
+    const currentBooking = await tx.booking.findUnique({
+      where: { id: opts.bookingId },
+      include: { event: true, payment: true, tickets: true, user: { select: { id: true, email: true, name: true } } },
+    });
+    if (!currentBooking) throw new AppError(404, 'Booking not found.');
+    if (opts.userId && currentBooking.userId !== opts.userId) throw new AppError(403, 'Not authorized.');
+    if (!currentBooking.payment || currentBooking.payment.razorpayOrderId !== opts.razorpayOrderId) {
+      throw new AppError(400, 'Payment order does not match this booking.');
+    }
+    if (currentBooking.status === 'CANCELLED') {
+      throw new AppError(400, 'Cannot confirm a cancelled booking.');
+    }
+    if (currentBooking.status === 'CONFIRMED' && currentBooking.payment.status === 'CAPTURED') {
+      if (currentBooking.payment.razorpayPaymentId !== opts.razorpayPaymentId) {
+        throw new AppError(409, 'A different payment is already attached to this booking.');
+      }
+      const tickets = await issueTicketsIfMissing(tx, currentBooking);
+      return { booking: currentBooking, tickets, alreadyConfirmed: true };
+    }
+
     await tx.payment.update({
-      where: { bookingId: booking.id },
+      where: { bookingId: currentBooking.id },
       data: {
         razorpayPaymentId: opts.razorpayPaymentId,
-        razorpaySignature: opts.razorpaySignature ?? booking.payment.razorpaySignature,
+        razorpaySignature: opts.razorpaySignature ?? currentBooking.payment.razorpaySignature,
         status: 'CAPTURED',
-        webhookVerified: opts.webhookVerified ? true : booking.payment.webhookVerified,
+        webhookVerified: opts.webhookVerified ? true : currentBooking.payment.webhookVerified,
       },
     });
 
     const confirmed = await tx.booking.update({
-      where: { id: booking.id },
+      where: { id: currentBooking.id },
       data: { status: 'CONFIRMED' },
     });
 
     const tickets = await issueTicketsIfMissing(tx, {
-      id: booking.id,
-      seats: booking.seats,
-      reference: booking.reference,
-      eventId: booking.eventId,
+      id: currentBooking.id,
+      seats: currentBooking.seats,
+      reference: currentBooking.reference,
+      eventId: currentBooking.eventId,
     });
     await tx.inAppNotification.create({
       data: {
-        userId: booking.userId,
+        userId: currentBooking.userId,
         type: 'REGISTRATION_CONFIRMED',
         title: 'Registration confirmed',
-        message: `Your registration for ${booking.event.title} is confirmed. Your ticket is ready.`,
+        message: `Your registration for ${currentBooking.event.title} is confirmed. Your ticket is ready.`,
         link: '/dashboard/bookings',
-        eventId: booking.eventId,
-        key: `booking-confirmed:${booking.id}:${confirmed.updatedAt.toISOString()}`,
+        eventId: currentBooking.eventId,
+        key: `booking-confirmed:${currentBooking.id}:${confirmed.updatedAt.toISOString()}`,
       },
     });
-    return { booking: { ...booking, ...confirmed, status: 'CONFIRMED' as const }, tickets, alreadyConfirmed: false };
+    return { booking: { ...currentBooking, ...confirmed, status: 'CONFIRMED' as const }, tickets, alreadyConfirmed: false };
   });
 
   if (!result.alreadyConfirmed && result.booking.user) {
@@ -92,33 +117,4 @@ export async function confirmPaidBooking(opts: {
   }
 
   return result;
-}
-
-export async function failPendingPayment(razorpayOrderId: string) {
-  await prisma.$transaction(async (tx) => {
-    const payment = await tx.payment.findUnique({
-      where: { razorpayOrderId },
-      include: { booking: true },
-    });
-    if (!payment) return;
-    if (payment.status === 'CAPTURED') return;
-
-    await tx.payment.update({
-      where: { id: payment.id },
-      data: { status: 'FAILED', webhookVerified: true },
-    });
-
-    if (payment.booking.status === 'PENDING') {
-      await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${payment.booking.eventId} FOR UPDATE`;
-      await tx.booking.update({
-        where: { id: payment.booking.id },
-        data: { status: 'CANCELLED', cancelledAt: new Date(), cancellationReason: 'Payment failed' },
-      });
-      await tx.$executeRaw`
-        UPDATE "Event"
-        SET "bookedSeats" = GREATEST(0, "bookedSeats" - ${payment.booking.seats})
-        WHERE id = ${payment.booking.eventId}
-      `;
-    }
-  });
 }

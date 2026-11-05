@@ -37,3 +37,8 @@ export function getSafeRedirectPath(
     return fallback;
   }
 }
+
+export function getPostAuthRedirect(role: string | undefined, candidate?: string | null): string {
+  const fallback = role === 'ADMIN' ? '/admin' : DEFAULT_AUTH_REDIRECT;
+  return getSafeRedirectPath(candidate, fallback);
+}

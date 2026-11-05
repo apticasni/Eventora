@@ -125,7 +125,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-    cancel: (id: string, reason?: string) => fetcher<void>(`/bookings/${id}/cancel`, {
+    cancel: (id: string, reason?: string) => fetcher<{ status: 'CANCELLED' | 'REFUNDED' }>(`/bookings/${id}/cancel`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
@@ -167,7 +167,6 @@ export const api = {
       keyId: string;
       bookingReference: string;
       paymentId?: string;
-      devMode?: boolean;
     }>('/payments/create-order', {
       method: 'POST',
       body: JSON.stringify({ bookingId }),
@@ -180,10 +179,6 @@ export const api = {
     }) => fetcher<{ tickets: Ticket[] }>('/payments/verify', {
       method: 'POST',
       body: JSON.stringify(body),
-    }),
-    devConfirm: (bookingId: string) => fetcher<{ tickets: Ticket[]; simulated?: boolean }>('/payments/dev-confirm', {
-      method: 'POST',
-      body: JSON.stringify({ bookingId }),
     }),
   },
 

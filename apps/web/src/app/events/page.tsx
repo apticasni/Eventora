@@ -4,12 +4,11 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Category } from '@eventora/shared';
 import { api } from '@/lib/api';
-import { MOCK_CATEGORIES } from '@/lib/mockData';
 import {
   eventsDiscoveryStateFromResponse,
   initialEventsDiscoveryState,
 } from '@/lib/eventsDiscovery';
-import { getCategoryFilter, getEventsHrefWithCategory } from '@/lib/eventsNavigation';
+import { getCategoryFilter, getEventsHrefWithCategory, getEventsHrefWithType } from '@/lib/eventsNavigation';
 import { EventCard } from '@/components/events/EventCard';
 import {
   Search,
@@ -40,9 +39,11 @@ function EventsDiscoveryContent() {
   const [page, setPage] = useState(1);
 
   const [eventsState, setEventsState] = useState(initialEventsDiscoveryState);
-  const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [retryCount, setRetryCount] = useState(0);
   const category = getCategoryFilter(searchParams);
+  const typeParam = searchParams.get('type');
+  const eventType = typeParam === 'workshop' || typeParam === 'masterclass' ? typeParam : 'all';
 
   useEffect(() => {
     api.events.categories().then((res) => {
@@ -59,6 +60,7 @@ function EventsDiscoveryContent() {
         const res = await api.events.list({
           q: search || undefined,
           category: category !== 'all' ? category : undefined,
+          type: eventType !== 'all' ? eventType : undefined,
           format: format !== 'all' ? (format as any) : undefined,
           isFree: priceFilter === 'free' ? 'true' : priceFilter === 'paid' ? 'false' : undefined,
           city: cityFilter !== 'all' ? cityFilter : undefined,
@@ -87,7 +89,7 @@ function EventsDiscoveryContent() {
     return () => {
       active = false;
     };
-  }, [search, category, format, priceFilter, cityFilter, startDate, endDate, minPrice, maxPrice, availableOnly, sortBy, page, retryCount]);
+  }, [search, category, eventType, format, priceFilter, cityFilter, startDate, endDate, minPrice, maxPrice, availableOnly, sortBy, page, retryCount]);
 
   const events = eventsState.status === 'success' ? eventsState.events : [];
   const loading = eventsState.status === 'loading';
@@ -97,13 +99,14 @@ function EventsDiscoveryContent() {
   const totalPages = eventsState.status === 'success' ? eventsState.totalPages : 0;
   const totalEvents = eventsState.status === 'success' ? eventsState.total : 0;
   const hasActiveFilters = Boolean(
-    search || category !== 'all' || format !== 'all' || priceFilter !== 'all' ||
+    search || category !== 'all' || eventType !== 'all' || format !== 'all' || priceFilter !== 'all' ||
     cityFilter !== 'all' || startDate || endDate || minPrice || maxPrice || availableOnly,
   );
 
   const resetFilters = () => {
     setSearch('');
-    router.replace(getEventsHrefWithCategory(searchParams, 'all'), { scroll: false });
+    const withoutCategory = getEventsHrefWithCategory(searchParams, 'all');
+    router.replace(getEventsHrefWithType(new URLSearchParams(withoutCategory.split('?')[1] || ''), 'all'), { scroll: false });
     setFormat('all');
     setPriceFilter('all');
     setCityFilter('all');

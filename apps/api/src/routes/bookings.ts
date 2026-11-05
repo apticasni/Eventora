@@ -7,7 +7,7 @@ import { CreateBookingSchema, CancelBookingSchema } from '@eventora/shared';
 import { sendBookingConfirmation, sendTicketDetails, sendCancellationConfirmation } from '../lib/email';
 import { processWaitlist } from '../services/waitlist';
 import { issueTicketsIfMissing } from '../services/tickets';
-import { canAllocateSeats } from '../lib/razorpay';
+import { canAllocateSeats, getRazorpayInstance, isRazorpayOrderId, isRazorpayTestConfigured } from '../lib/razorpay';
 import { isEventRegistrationOpen } from '../lib/eventEligibility';
 
 export const bookingsRouter = Router();
@@ -57,6 +57,20 @@ bookingsRouter.post('/', requireAuth, validateBody(CreateBookingSchema), async (
         include: { payment: true },
       });
       if (existing && existing.status !== 'CANCELLED') {
+        if (
+          existing.status === 'PENDING' &&
+          (!existing.payment || existing.payment.status === 'PENDING' || existing.payment.status === 'FAILED')
+        ) {
+          // Return the existing reservation without incrementing seats again. The payment
+          // route reuses its Razorpay order so a dismissed or failed attempt can be retried.
+          return {
+            booking: existing,
+            event,
+            needsPayment: existing.totalAmount > 0,
+            totalAmount: existing.totalAmount,
+            tickets: [],
+          };
+        }
         throw new AppError(409, 'You already have a booking for this event.');
       }
       if (existing && existing.payment && existing.payment.status !== 'FAILED' && existing.payment.status !== 'REFUNDED') {
@@ -163,22 +177,98 @@ bookingsRouter.post('/:id/cancel', requireAuth, validateBody(CancelBookingSchema
     const { id } = req.params;
     const { reason } = req.body;
 
-    const initialBooking = await prisma.booking.findUnique({ where: { id } });
+    const initialBooking = await prisma.booking.findUnique({
+      where: { id },
+      include: { event: true, payment: true },
+    });
     if (!initialBooking) throw new AppError(404, 'Booking not found.');
     if (initialBooking.userId !== req.user!.userId && req.user!.role !== 'ADMIN') throw new AppError(403, 'Not authorized.');
+    if (initialBooking.status === 'CANCELLED' || initialBooking.status === 'REFUNDED') {
+      throw new AppError(400, 'Booking is already cancelled.');
+    }
+    if (initialBooking.event.startDate < new Date()) throw new AppError(400, 'Cannot cancel a past event booking.');
+
+    let finalStatus: 'CANCELLED' | 'REFUNDED' = 'CANCELLED';
+    let providerRefundVerified = false;
+    if (initialBooking.totalAmount > 0) {
+      const payment = initialBooking.payment;
+      if (!payment) {
+        if (initialBooking.status !== 'PENDING') {
+          throw new AppError(409, 'No payment record exists for this paid booking. Please contact support.');
+        }
+        // No Razorpay order exists yet, so a pending reservation can be cancelled safely.
+      } else if (!isRazorpayOrderId(payment.razorpayOrderId) && !payment.razorpayPaymentId && payment.status !== 'REFUNDED') {
+        // Legacy local demo rows contain placeholder order IDs that cannot be paid.
+      } else if (!isRazorpayOrderId(payment.razorpayOrderId)) {
+        throw new AppError(409, 'This booking has an invalid payment order. Please contact support.');
+      } else if (payment.status === 'REFUNDED') {
+        finalStatus = 'REFUNDED';
+        providerRefundVerified = payment.webhookVerified;
+      } else {
+        if (!payment.razorpayPaymentId) {
+          throw new AppError(409, 'Payment is still pending or retryable. Complete checkout before cancelling this booking.');
+        }
+        if (!isRazorpayTestConfigured()) {
+          throw new AppError(503, 'Razorpay Test Mode is required to verify or refund this payment.');
+        }
+        const razorpay = getRazorpayInstance();
+        const remotePayment = await razorpay.payments.fetch(payment.razorpayPaymentId);
+        const expectedAmount = Math.round(initialBooking.totalAmount * 100);
+        if (
+          remotePayment.order_id !== payment.razorpayOrderId ||
+          remotePayment.amount !== expectedAmount ||
+          remotePayment.currency !== initialBooking.currency
+        ) {
+          throw new AppError(409, 'Razorpay payment does not match this booking. Please contact support.');
+        }
+        const amountAlreadyRefunded = remotePayment.amount_refunded || 0;
+        if (amountAlreadyRefunded > expectedAmount) {
+          throw new AppError(409, 'Razorpay reports a refund greater than the booking total. Please contact support.');
+        }
+        if (amountAlreadyRefunded < expectedAmount && remotePayment.status !== 'captured') {
+          throw new AppError(409, 'Payment is not captured yet. Retry checkout or wait for its final status before cancelling.');
+        }
+        const amountToRefund = expectedAmount - amountAlreadyRefunded;
+        if (amountToRefund > 0) {
+          await razorpay.payments.refund(payment.razorpayPaymentId, {
+            amount: amountToRefund,
+            notes: { booking_reference: initialBooking.reference, reason: reason || 'Booking cancelled' },
+          });
+        }
+        finalStatus = 'REFUNDED';
+        providerRefundVerified = true;
+      }
+    }
 
     const booking = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${initialBooking.eventId} FOR UPDATE`;
-      const currentBooking = await tx.booking.findUnique({ where: { id }, include: { event: true } });
+      const currentBooking = await tx.booking.findUnique({ where: { id }, include: { event: true, payment: true } });
       if (!currentBooking) throw new AppError(404, 'Booking not found.');
-      if (currentBooking.status === 'CANCELLED') throw new AppError(400, 'Booking is already cancelled.');
+      if (currentBooking.status === 'CANCELLED' || currentBooking.status === 'REFUNDED') {
+        return { ...currentBooking, shouldReleaseSeats: false, alreadyCancelled: true };
+      }
       if (currentBooking.event.startDate < new Date()) throw new AppError(400, 'Cannot cancel a past event booking.');
 
       const shouldReleaseSeats = currentBooking.status === 'CONFIRMED' || currentBooking.status === 'PENDING';
       const cancelledBooking = await tx.booking.update({
         where: { id },
-        data: { status: 'CANCELLED', cancelledAt: new Date(), cancellationReason: reason || null },
+        data: { status: finalStatus, cancelledAt: new Date(), cancellationReason: reason || null },
       });
+      if (finalStatus === 'REFUNDED') {
+        await tx.payment.update({
+          where: { bookingId: id },
+          data: { status: 'REFUNDED', webhookVerified: providerRefundVerified || currentBooking.payment?.webhookVerified || false },
+        });
+      } else if (
+        currentBooking.payment &&
+        !currentBooking.payment.razorpayPaymentId &&
+        !isRazorpayOrderId(currentBooking.payment.razorpayOrderId)
+      ) {
+        await tx.payment.update({
+          where: { bookingId: id },
+          data: { status: 'FAILED', webhookVerified: false },
+        });
+      }
       if (shouldReleaseSeats) {
         await tx.$executeRaw`
           UPDATE "Event"
@@ -197,18 +287,24 @@ bookingsRouter.post('/:id/cancel', requireAuth, validateBody(CancelBookingSchema
           key: `booking-cancelled:${currentBooking.id}:${cancelledBooking.updatedAt.toISOString()}`,
         },
       });
-      return { ...currentBooking, ...cancelledBooking, shouldReleaseSeats };
+      return { ...currentBooking, ...cancelledBooking, shouldReleaseSeats, alreadyCancelled: false };
     });
 
     if (booking.shouldReleaseSeats) {
       processWaitlist(booking.eventId, booking.seats).catch(console.error);
     }
 
-    const user = await prisma.user.findUnique({ where: { id: booking.userId } });
+    const user = booking.alreadyCancelled ? null : await prisma.user.findUnique({ where: { id: booking.userId } });
     if (user) {
       sendCancellationConfirmation(user.email, user.name, { title: booking.event.title }, booking.reference).catch(console.error);
     }
 
-    res.json({ success: true, message: 'Booking cancelled successfully.' });
+    res.json({
+      success: true,
+      data: { status: booking.status },
+      message: booking.status === 'REFUNDED'
+        ? 'Booking cancelled and refund initiated through Razorpay.'
+        : 'Booking cancelled successfully.',
+    });
   } catch (err) { next(err); }
 });

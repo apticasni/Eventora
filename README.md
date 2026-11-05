@@ -123,12 +123,14 @@ Booking uses PostgreSQL transactions combined with row-level locks (`SELECT FOR 
 - Ensures capacity bounds are never exceeded.
 
 ### 2. Razorpay Test Mode Verification
-- Server creates Razorpay orders via `@eventora/api`.
-- Client checkout opens Razorpay Checkout widget in Test Mode.
-- On client return, payment signatures are **cryptographically verified on the backend** using `crypto.createHmac('sha256', RAZORPAY_KEY_SECRET)`:
+- The API accepts only complete `rzp_test_` credentials; live keys and placeholder values fail closed.
+- Server creates one Razorpay order per pending booking. Retry attempts reuse that same order.
+- Client checkout opens Razorpay Checkout with the matching public Test Mode key.
+- On client return, the API verifies the signature and fetches Razorpay's payment record to check captured status, order, amount, and currency before confirming tickets:
   $$\text{HMAC-SHA256}(\text{order\_id} \mathbin{\Vert} \text{"|"} \mathbin{\Vert} \text{payment\_id}, \text{secret})$$
-- Bookings and tickets are confirmed **only** upon successful HMAC verification.
-- Webhook signature reconciliation handles asynchronous background confirmations.
+- Failed attempts and a dismissed checkout leave the booking pending and can retry the same order.
+- Signed `payment.captured` webhooks provide asynchronous confirmation; duplicate captures do not issue duplicate tickets.
+- Cancelling a captured paid booking initiates a full refund through Razorpay Test Mode. A payment that is still pending or retryable cannot release its reserved seats.
 
 ### 3. FIFO Waitlist Management
 - When an event sells out (`availableSeats === 0`), attendees can join a FIFO queue.
@@ -207,7 +209,8 @@ reset. This command is separate from the destructive demo seed above.
 
 For the fictional, additive development dataset, first verify the API's
 `DATABASE_URL` targets the dedicated local database `eventora_local` on
-`127.0.0.1:5433`. The seed also ensures `admin@eventora.com` has the local admin
+`127.0.0.1:5433` (or the Compose `postgres:5432` service when seeding in Docker).
+The seed also ensures `admin@eventora.com` has the local admin
 password supplied through `EVENTORA_LOCAL_ADMIN_PASSWORD`. In PowerShell, enter
 that password with a hidden prompt and run the seed from `apps/api`:
 
@@ -223,11 +226,18 @@ try {
 }
 ```
 
+When using Docker Compose, set the same hidden password in the host environment,
+then run the seed from the repository root:
+
+```powershell
+docker compose --env-file .env.docker exec -T -e "EVENTORA_LOCAL_ADMIN_PASSWORD=$env:EVENTORA_LOCAL_ADMIN_PASSWORD" api npm run db:seed-demo-dataset
+```
+
 The local admin password is bcrypt-hashed and is not written to the demo
 credentials file. An existing `admin@eventora.com` account keeps its profile and
 related records while its password hash and admin role are updated. The seed
 creates five organizers, ten attendees, and fifteen events when those records are
-missing. Paid demo payments remain pending; no successful payment is fabricated.
+missing. Paid demo bookings remain pending; the seed creates no mock payment records.
 The seed is local-only, safe to rerun, preserves other users and records, and
 never uses the destructive `db:seed` command. Generated demo-user logins are
 stored in the gitignored `demo-dataset-credentials.txt` file; keep that file
@@ -244,6 +254,17 @@ These accounts use the local-only password convention `<FirstName>@1234` (for ex
 the password begins with the account holder's first name). The script hashes passwords
 with bcrypt and never prints or stores plaintext passwords. Do not reuse these demo
 passwords outside local development. Credentials are intentionally excluded from tracked documentation. Keep local demo logins private and never reuse them in production.
+
+To add nine more future-dated, published sample listings without changing existing
+records, run this additive seed from the repository root:
+
+```bash
+npm run db:seed:demo-events --workspace=@eventora/api
+```
+
+It requires the local `eventora_local` database and an existing organizer. It refuses
+production and remote database URLs; rerunning it adds only missing categories and
+event slugs.
 
 ### 3. Start Development Servers
 From the root workspace:

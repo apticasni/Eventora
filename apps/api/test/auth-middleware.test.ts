@@ -88,6 +88,20 @@ describe('authentication middleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('allows an authenticated admin through an admin role check', () => {
+    const req = { user: { userId: 'admin-1', email: 'admin@example.com', role: 'ADMIN' } } as AuthRequest;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    } as unknown as Response;
+    const next = vi.fn() as NextFunction;
+
+    requireRole('ADMIN')(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
   it('uses the current database role for optional authentication', async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
       id: 'user-1',

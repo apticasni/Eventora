@@ -12,6 +12,7 @@
     "db:seed-demo-dataset": "tsx src/prisma/seed-demo-dataset.ts",
     "db:seed-organizer-attendee-demo": "tsx src/prisma/seed-organizer-attendee-demo.ts",
     "db:seed-demo-users": "tsx src/prisma/seed-demo-users.ts",
+    "db:seed:demo-events": "tsx src/prisma/add-demo-events.ts",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "test": "vitest run",

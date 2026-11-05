@@ -7,10 +7,10 @@ import { api } from '@/lib/api';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; user?: User; message?: string }>;
   register: (name: string, email: string, password: string, role?: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,7 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => ({ success: false }),
   register: async () => ({ success: false }),
   logout: async () => {},
-  refreshUser: async () => {},
+  refreshUser: async () => null,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -31,6 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.auth.me();
       if (res.success && res.data) {
         setUser(res.data);
+        return res.data;
       } else {
         setUser(null);
       }
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
+    return null;
   }, []);
 
   useEffect(() => {
@@ -70,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (res.success && res.data) {
       setUser(res.data.user);
       if (res.data.token) localStorage.setItem('eventora_token', res.data.token);
-      return { success: true };
+      return { success: true, user: res.data.user };
     }
 
     return { success: false, message: res.message || 'Invalid credentials' };

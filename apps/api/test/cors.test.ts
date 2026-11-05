@@ -11,6 +11,20 @@ describe('CORS origin configuration', () => {
       .toEqual(['https://eventora.example', 'https://preview.eventora.example']);
   });
 
+  it('allows both local loopback hostnames in development', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(getAllowedOrigins('http://localhost:3000'))
+      .toEqual(['http://localhost:3000', 'http://127.0.0.1:3000']);
+    expect(getAllowedOrigins('http://127.0.0.1:3000'))
+      .toEqual(['http://127.0.0.1:3000', 'http://localhost:3000']);
+  });
+
+  it('does not add loopback aliases in production', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    expect(getAllowedOrigins('https://eventora.example'))
+      .toEqual(['https://eventora.example']);
+  });
+
   it('rejects insecure origins in production', () => {
     vi.stubEnv('NODE_ENV', 'production');
     expect(() => getAllowedOrigins('http://eventora.example'))
@@ -19,6 +33,7 @@ describe('CORS origin configuration', () => {
 
   it('requires an explicit frontend origin in production', () => {
     vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('FRONTEND_URL', '');
     expect(() => getAllowedOrigins(undefined))
       .toThrow('FRONTEND_URL must be configured in production.');
   });

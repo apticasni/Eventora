@@ -31,7 +31,7 @@ function slugify(text: string): string {
 // GET /api/events
 eventsRouter.get('/', optionalAuth, validateQuery(SearchEventsSchema), async (req: AuthRequest, res: Response, next) => {
   try {
-    const { q, category, format, city, isFree, minPrice, maxPrice, startDate, endDate, available, sortBy, page, limit, status } = req.query as Record<string, string>;
+    const { q, category, type, format, city, isFree, minPrice, maxPrice, startDate, endDate, available, sortBy, page, limit, status } = req.query as Record<string, string>;
     const skip = (parseInt(page || '1') - 1) * parseInt(limit || '12');
     const take = parseInt(limit || '12');
 
@@ -50,6 +50,7 @@ eventsRouter.get('/', optionalAuth, validateQuery(SearchEventsSchema), async (re
       ];
     }
     if (category) where.category = { slug: category };
+    if (type) where.tags = { has: type };
     if (format) where.format = format;
     if (city) where.city = { contains: city, mode: 'insensitive' };
     if (isFree === 'true' || isFree === 'false') where.isFree = isFree === 'true';

@@ -9,6 +9,7 @@ import { getSmtpConfig } from '../lib/emailConfig';
 import { sendWaitlistOffer } from '../lib/email';
 import { writeAuditLog } from '../services/auditLog';
 import { checkInTicket } from '../services/checkIn';
+import { isRazorpayTestConfigured } from '../lib/razorpay';
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireRole('ADMIN'));
@@ -771,7 +772,7 @@ adminRouter.get('/system-status', async (_req, res: Response) => {
     data: {
       api: 'available',
       database,
-      payments: process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET ? 'configured' : 'incomplete',
+      payments: isRazorpayTestConfigured() ? 'test-configured' : 'incomplete',
       email,
       recentOperationalErrors: 'not_available',
       checkedAt: new Date().toISOString(),

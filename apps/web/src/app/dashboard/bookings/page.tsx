@@ -98,11 +98,11 @@ export default function AttendeeBookingsPage() {
       }
       setBookings(
         bookings.map((b) =>
-          b.id === bookingId ? { ...b, status: 'CANCELLED' as any } : b
+          b.id === bookingId ? { ...b, status: res.data?.status || 'CANCELLED' } : b
         )
       );
       setCancellingId(null);
-      setActionMessage('Booking cancelled. Any eligible refund has been initiated.');
+      setActionMessage(res.message || 'Booking cancelled.');
       setTimeout(() => setActionMessage(null), 4000);
     } catch (err: any) {
       setActionMessage(err?.message || 'Failed to cancel booking.');
@@ -110,9 +110,9 @@ export default function AttendeeBookingsPage() {
   };
 
   const bookingSections = [
-    { title: 'Upcoming', bookings: bookings.filter((booking) => booking.status !== 'CANCELLED' && (!booking.event?.endDate || new Date(booking.event.endDate).getTime() > bookingsLoadedAt) && booking.event?.status !== 'COMPLETED') },
-    { title: 'Completed', bookings: bookings.filter((booking) => booking.status !== 'CANCELLED' && (booking.event?.status === 'COMPLETED' || (booking.event?.endDate && new Date(booking.event.endDate).getTime() <= bookingsLoadedAt))) },
-    { title: 'Cancelled', bookings: bookings.filter((booking) => booking.status === 'CANCELLED') },
+    { title: 'Upcoming', bookings: bookings.filter((booking) => booking.status !== 'CANCELLED' && booking.status !== 'REFUNDED' && (!booking.event?.endDate || new Date(booking.event.endDate).getTime() > bookingsLoadedAt) && booking.event?.status !== 'COMPLETED') },
+    { title: 'Completed', bookings: bookings.filter((booking) => booking.status !== 'CANCELLED' && booking.status !== 'REFUNDED' && (booking.event?.status === 'COMPLETED' || (booking.event?.endDate && new Date(booking.event.endDate).getTime() <= bookingsLoadedAt))) },
+    { title: 'Cancelled', bookings: bookings.filter((booking) => booking.status === 'CANCELLED' || booking.status === 'REFUNDED') },
   ];
 
   return (

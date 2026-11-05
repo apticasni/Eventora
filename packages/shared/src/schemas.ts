@@ -75,6 +75,7 @@ export const UpdateEventSchema = CreateEventSchema.partial().extend({
 export const SearchEventsSchema = z.object({
   q: z.string().max(200).optional(),
   category: z.string().max(100).optional(),
+  type: z.enum(['workshop', 'masterclass']).optional(),
   format: z.enum(['IN_PERSON', 'ONLINE', 'HYBRID']).optional(),
   city: z.string().max(100).optional(),
   isFree: z.enum(['true', 'false']).optional(),

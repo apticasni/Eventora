@@ -5,7 +5,6 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Event, Review } from '@eventora/shared';
 import { api } from '@/lib/api';
-import { MOCK_EVENTS } from '@/lib/mockData';
 import { Avatar } from '@/components/ui/Avatar';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDate, formatTime, formatCurrency } from '@/lib/utils';
@@ -44,7 +43,9 @@ export default function EventDetailPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [selectedSeats, setSelectedSeats] = useState<number>(1);
   const [loading, setLoading] = useState(true);
+  const [eventLoadError, setEventLoadError] = useState<string | null>(null);
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [canRetryPayment, setCanRetryPayment] = useState(false);
   const [bookingMessage, setBookingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [waitlistJoined, setWaitlistJoined] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -63,18 +64,18 @@ export default function EventDetailPage() {
         const res = await api.events.get(slug);
         if (res.success && res.data) {
           setEvent(res.data);
+          setEventLoadError(null);
           const revRes = await api.reviews.forEvent(res.data.id);
           if (revRes.success && revRes.data?.reviews) {
             setReviews(revRes.data.reviews);
           }
         } else {
-          // Fallback to mock data
-          const found = MOCK_EVENTS.find((e) => e.slug === slug);
-          if (found) setEvent(found);
+          setEvent(null);
+          setEventLoadError(res.message || 'This event is not available in the catalog.');
         }
       } catch {
-        const found = MOCK_EVENTS.find((e) => e.slug === slug);
-        if (found) setEvent(found);
+        setEvent(null);
+        setEventLoadError('Unable to load this event. Please check your connection and try again.');
       } finally {
         setLoading(false);
       }
@@ -131,7 +132,7 @@ export default function EventDetailPage() {
     return (
       <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-4">
         <h2 className="font-serif text-3xl font-bold text-forest">Experience Not Found</h2>
-        <p className="text-sm text-[#71695d]">The workshop you are looking for may have concluded or been relocated.</p>
+        <p className="text-sm text-[#71695d]">{eventLoadError || 'The event you are looking for may have concluded or been relocated.'}</p>
         <Link href="/events" className="inline-block px-6 py-2.5 bg-forest text-white rounded-xl text-sm font-semibold">
           Browse Active Catalog
         </Link>
@@ -151,6 +152,7 @@ export default function EventDetailPage() {
 
     setBookingLoading(true);
     setBookingMessage(null);
+    setCanRetryPayment(false);
 
     try {
       // 1. Create booking on backend
@@ -180,6 +182,7 @@ export default function EventDetailPage() {
         }, 1500);
         return;
       }
+      setCanRetryPayment(true);
 
       // Paid event -> Initialize Razorpay Test Checkout
       const orderRes = await api.payments.createOrder(booking.id);
@@ -192,53 +195,56 @@ export default function EventDetailPage() {
       }
 
       const orderData = orderRes.data;
-
-      if (orderData.devMode) {
-        const confirmRes = await api.payments.devConfirm(booking.id);
-        if (confirmRes.success) {
-          setBookingMessage({
-            type: 'success',
-            text: 'Development test payment confirmed. Tickets are in your wallet.',
-          });
-          setTimeout(() => router.push('/dashboard/bookings'), 1500);
-        } else {
-          setBookingMessage({
-            type: 'error',
-            text: confirmRes.message || 'Test payment confirmation failed.',
-          });
-        }
+      const configuredTestKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (
+        !configuredTestKey?.startsWith('rzp_test_') ||
+        orderData.keyId !== configuredTestKey
+      ) {
+        setBookingMessage({
+          type: 'error',
+          text: 'Razorpay Test Mode keys are missing or do not match. Configure the same test key ID in the API and web environments.',
+        });
         return;
       }
 
       // Configure Razorpay checkout
       const options = {
-        key: orderData.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_sample',
+        key: configuredTestKey,
         amount: orderData.amount,
         currency: orderData.currency,
         name: 'Eventora Experiences',
         description: `Booking for ${event.title}`,
         order_id: orderData.orderId,
         handler: async function (response: any) {
-          // Verify on backend
-          const verifyRes = await api.payments.verify({
-            razorpayOrderId: response.razorpay_order_id,
-            razorpayPaymentId: response.razorpay_payment_id,
-            razorpaySignature: response.razorpay_signature,
-            bookingId: booking.id,
-          });
-
-          if (verifyRes.success) {
-            setBookingMessage({
-              type: 'success',
-              text: 'Payment verified! Your tickets and QR passes are ready in your wallet.',
+          try {
+            const verifyRes = await api.payments.verify({
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+              bookingId: booking.id,
             });
-            setTimeout(() => {
-              router.push('/dashboard/bookings');
-            }, 1500);
-          } else {
+
+            if (verifyRes.success) {
+              setCanRetryPayment(false);
+              setBookingMessage({
+                type: 'success',
+                text: 'Payment verified! Your tickets and QR passes are ready in your wallet.',
+              });
+              setTimeout(() => {
+                router.push('/dashboard/bookings');
+              }, 1500);
+            } else {
+              setCanRetryPayment(true);
+              setBookingMessage({
+                type: 'error',
+                text: verifyRes.message || 'Payment is not confirmed yet. You can retry this test order.',
+              });
+            }
+          } catch {
+            setCanRetryPayment(true);
             setBookingMessage({
               type: 'error',
-              text: 'Payment verification failed. Please contact support.',
+              text: 'Payment confirmation could not be checked. Your booking remains pending; retry the same test order.',
             });
           }
         },
@@ -249,24 +255,36 @@ export default function EventDetailPage() {
         theme: {
           color: '#1a3a2a',
         },
+        modal: {
+          ondismiss: () => {
+            setCanRetryPayment(true);
+            setBookingMessage({
+              type: 'error',
+              text: 'Checkout was closed. Your booking is still pending; reopen the same test order to pay or contact support if you need help.',
+            });
+          },
+        },
       };
 
       if (typeof window.Razorpay !== 'undefined') {
         const rzp = new window.Razorpay(options);
         rzp.on('payment.failed', function () {
+          setCanRetryPayment(true);
           setBookingMessage({
             type: 'error',
-            text: 'Payment failed or was cancelled. Your seats are still held on a pending booking.',
+            text: 'This payment attempt failed. Your seat remains reserved and the same Razorpay test order can be retried.',
           });
         });
         rzp.open();
       } else {
+        setCanRetryPayment(true);
         setBookingMessage({
           type: 'error',
           text: 'Razorpay checkout could not be loaded. Please refresh and try again.',
         });
       }
     } catch (err: any) {
+      setCanRetryPayment(true);
       setBookingMessage({
         type: 'error',
         text: err?.message || 'Failed to complete registration.',
@@ -316,21 +334,10 @@ export default function EventDetailPage() {
         setReviews([res.data, ...reviews]);
         setUserComment('');
       } else {
-        // Local simulation
-        const localRev: Review = {
-          id: `rev-${Date.now()}`,
-          userId: user.id,
-          user: { id: user.id, name: user.name, avatar: user.avatar },
-          eventId: event.id,
-          rating: userRating,
-          comment: userComment,
-          createdAt: new Date().toISOString(),
-        };
-        setReviews([localRev, ...reviews]);
-        setUserComment('');
+        setBookingMessage({ type: 'error', text: res.message || 'Could not submit your review. Please try again.' });
       }
     } catch {
-      // Local fallback
+      setBookingMessage({ type: 'error', text: 'Could not submit your review. Please try again.' });
     } finally {
       setSubmittingReview(false);
     }
@@ -756,6 +763,16 @@ export default function EventDetailPage() {
                 >
                   {bookingMessage.text}
                 </div>
+              )}
+              {canRetryPayment && !event.isFree && (
+                <button
+                  type="button"
+                  onClick={handleBooking}
+                  disabled={bookingLoading}
+                  className="w-full rounded-xl border border-forest px-4 py-2.5 text-xs font-bold text-forest hover:bg-[#f2ede4] disabled:opacity-50"
+                >
+                  {bookingLoading ? 'Reopening secure checkout…' : 'Retry payment'}
+                </button>
               )}
 
               {/* Security & Guarantee Trust Seals */}

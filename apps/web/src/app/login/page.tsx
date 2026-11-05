@@ -6,14 +6,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
-import { getSafeRedirectPath } from '@/lib/safeRedirect';
+import { getPostAuthRedirect, getSafeRedirectPath } from '@/lib/safeRedirect';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = getSafeRedirectPath(searchParams.get('redirect'));
+  const redirectCandidate = searchParams.get('redirect');
+  const redirect = getSafeRedirectPath(redirectCandidate);
   const googleSignInUrl = new URL(api.auth.googleSignInUrl);
-  googleSignInUrl.searchParams.set('redirect', redirect);
+  if (redirectCandidate) googleSignInUrl.searchParams.set('redirect', redirect);
   const googleStatus = searchParams.get('google');
   const { login, refreshUser } = useAuth();
 
@@ -31,10 +32,20 @@ function LoginForm() {
   });
 
   useEffect(() => {
-    if (googleStatus === 'success') {
-      void refreshUser().then(() => router.replace(redirect));
-    }
-  }, [googleStatus, redirect, refreshUser, router]);
+    if (googleStatus !== 'success') return;
+
+    let active = true;
+    void refreshUser().then((signedInUser) => {
+      if (!active) return;
+      if (!signedInUser) {
+        setError('Google sign-in returned to Eventora, but the session could not be loaded. Check your connection and try again.');
+        return;
+      }
+      router.replace(getPostAuthRedirect(signedInUser.role, redirectCandidate));
+    });
+
+    return () => { active = false; };
+  }, [googleStatus, redirectCandidate, refreshUser, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +54,7 @@ function LoginForm() {
 
     const res = await login(email, password);
     if (res.success) {
-      router.push(redirect);
+      router.replace(getPostAuthRedirect(res.user?.role, redirectCandidate));
     } else {
       setError(res.message || 'Invalid email or password.');
       setLoading(false);

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Category } from '@eventora/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { ArrowLeft, Plus, CheckCircle2 } from 'lucide-react';
@@ -14,7 +15,10 @@ export default function NewEventPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [shortDescription, setShortDescription] = useState('');
-  const [category, setCategory] = useState('cat-1');
+  const [category, setCategory] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [format, setFormat] = useState<'IN_PERSON' | 'ONLINE'>('IN_PERSON');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -28,13 +32,45 @@ export default function NewEventPage() {
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCategories() {
+      try {
+        const response = await api.events.categories();
+        if (!active) return;
+        if (!response.success || !response.data) {
+          setCategoryError(response.message || 'Unable to load event categories.');
+          return;
+        }
+        setCategories(response.data);
+        setCategory(response.data[0]?.id || '');
+      } catch {
+        if (active) setCategoryError('Unable to load event categories. Please try again.');
+      } finally {
+        if (active) setCategoriesLoading(false);
+      }
+    }
+
+    void loadCategories();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    if (!category) {
+      setError('An event category is required before publishing.');
+      return;
+    }
     setLoading(true);
 
     try {
-      await api.events.create({
+      const response = await api.events.create({
         title,
         description,
         shortDescription,
@@ -50,11 +86,14 @@ export default function NewEventPage() {
         instructorName: user?.name,
         instructorAvatar: user?.avatar,
       });
+      if (!response.success || !response.data) {
+        setError(response.message || 'Unable to create the workshop. Please try again.');
+        return;
+      }
       setSuccess(true);
       setTimeout(() => router.push('/organizer'), 1500);
     } catch {
-      setSuccess(true);
-      setTimeout(() => router.push('/organizer'), 1500);
+      setError('Unable to create the workshop. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -91,6 +130,24 @@ export default function NewEventPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
+            {error && (
+              <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                {error}
+              </p>
+            )}
+            {categoryError ? (
+              <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                {categoryError}
+              </p>
+            ) : !categoriesLoading && categories.length === 0 ? (
+              <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                No event categories are configured yet, so a workshop cannot be published. You can{' '}
+                <Link href="/organizer/proposals/new" className="font-bold underline">
+                  submit a workshop proposal
+                </Link>{' '}
+                for administrator review.
+              </div>
+            ) : null}
             <div>
               <label className="block text-xs font-bold text-forest mb-1.5">Workshop Title</label>
               <input
@@ -120,16 +177,15 @@ export default function NewEventPage() {
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
+                  disabled={categoriesLoading || categories.length === 0}
                   className="w-full px-4 py-2.5 rounded-xl border border-[#ded7ca] bg-[#faf8f5] text-xs font-semibold"
                 >
-                  <option value="cat-1">Technology</option>
-                  <option value="cat-2">Design</option>
-                  <option value="cat-3">Business</option>
-                  <option value="cat-4">Health & Wellness</option>
-                  <option value="cat-5">Photography</option>
-                  <option value="cat-6">Music</option>
-                  <option value="cat-7">Cooking</option>
-                  <option value="cat-8">Leadership</option>
+                  <option value="">
+                    {categoriesLoading ? 'Loading categories…' : 'Select a category'}
+                  </option>
+                  {categories.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
                 </select>
               </div>
 
@@ -220,7 +276,7 @@ export default function NewEventPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || categoriesLoading || categories.length === 0 || !category}
               className="w-full py-4 rounded-xl bg-forest hover:bg-forest-light text-white font-bold text-sm shadow-warm transition-all"
             >
               {loading ? 'Publishing Event...' : 'Publish Experience to Platform'}

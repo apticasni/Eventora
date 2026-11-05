@@ -44,13 +44,13 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/events?category=health-wellness" className="hover:text-white transition-colors">
-                  Mindfulness & Yoga
+                <Link href="/events?type=masterclass" className="hover:text-white transition-colors">
+                  Masterclasses
                 </Link>
               </li>
               <li>
-                <Link href="/events?category=photography" className="hover:text-white transition-colors">
-                  Visual Arts & Photo
+                <Link href="/events?type=workshop" className="hover:text-white transition-colors">
+                  Workshops
                 </Link>
               </li>
             </ul>
