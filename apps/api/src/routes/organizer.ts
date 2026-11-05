@@ -88,7 +88,7 @@ organizerRouter.get('/events/:id/analytics', async (req: AuthRequest, res: Respo
         FROM "Booking" WHERE "eventId" = ${req.params.id} AND status = 'CONFIRMED'
         GROUP BY DATE("createdAt") ORDER BY date ASC
       `,
-      prisma.review.findMany({ where: { eventId: req.params.id } }),
+      prisma.review.findMany({ where: { eventId: req.params.id, moderationStatus: 'PUBLISHED' } }),
       prisma.checkIn.count({ where: { eventId: req.params.id } }),
     ]);
 

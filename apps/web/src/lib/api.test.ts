@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getApiBaseUrl } from './apiBase';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -54,5 +55,44 @@ describe('authentication API requests', () => {
         credentials: 'include',
       }),
     );
+  });
+
+  it('normalizes API origins and repeated /api suffixes to exactly one /api segment', () => {
+    expect(getApiBaseUrl('https://eventora.example')).toBe('https://eventora.example/api');
+    expect(getApiBaseUrl('https://eventora.example/api/')).toBe('https://eventora.example/api');
+    expect(getApiBaseUrl('https://eventora.example/api/api')).toBe('https://eventora.example/api');
+    expect(() => getApiBaseUrl(undefined, true)).toThrow(
+      'NEXT_PUBLIC_API_URL must be configured for production builds.',
+    );
+    expect(() => getApiBaseUrl('http://eventora.example', true)).toThrow(
+      'NEXT_PUBLIC_API_URL must use HTTPS in production.',
+    );
+  });
+
+  it('targets backend Google OAuth through the configured API base', async () => {
+    const { api } = await loadApi('https://eventora-p6rk.onrender.com');
+    expect(api.auth.googleSignInUrl).toBe('https://eventora-p6rk.onrender.com/api/auth/google');
+  });
+
+  it('fetches event listings from the configured public events route', async () => {
+    const { api, fetchMock } = await loadApi('https://eventora-p6rk.onrender.com/api/');
+
+    await api.events.list({ limit: 12 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://eventora-p6rk.onrender.com/api/events?limit=12',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('returns a safe connection error when the API cannot be reached', async () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://eventora-p6rk.onrender.com/api');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('private network detail')));
+    const { api } = await import('./api');
+
+    const response = await api.events.list();
+
+    expect(response.success).toBe(false);
+    expect(response.message).toBe('Unable to reach Eventora right now. Check your connection and try again.');
   });
 });

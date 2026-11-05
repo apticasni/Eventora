@@ -23,8 +23,10 @@ import {
   Sparkles,
   ArrowLeft,
   ShieldCheck,
-  Check
+  Check,
+  Bookmark,
 } from 'lucide-react';
+import { EventCoverImage } from '@/components/events/EventCoverImage';
 
 declare global {
   interface Window {
@@ -46,6 +48,8 @@ export default function EventDetailPage() {
   const [bookingMessage, setBookingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [waitlistJoined, setWaitlistJoined] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [savedEventKey, setSavedEventKey] = useState<string | null>(null);
+  const [savingEvent, setSavingEvent] = useState(false);
 
   // New review form state
   const [userRating, setUserRating] = useState(5);
@@ -77,6 +81,42 @@ export default function EventDetailPage() {
     }
     loadEvent();
   }, [slug]);
+
+  const userId = user?.id;
+  const eventId = event?.id;
+  const isSaved = Boolean(userId && eventId && savedEventKey === `${userId}:${eventId}`);
+
+  useEffect(() => {
+    let active = true;
+    if (!userId || !eventId) return () => { active = false; };
+    api.savedEvents.list().then((res) => {
+      if (active && res.success && res.data) {
+        setSavedEventKey(res.data.some((saved) => saved.eventId === eventId) ? `${userId}:${eventId}` : null);
+      }
+    });
+    return () => { active = false; };
+  }, [userId, eventId]);
+
+  const toggleSavedEvent = async () => {
+    if (!event) return;
+    if (!user) {
+      router.push(`/login?redirect=/events/${slug}`);
+      return;
+    }
+    setSavingEvent(true);
+    try {
+      const response = isSaved
+        ? await api.savedEvents.remove(event.id)
+        : await api.savedEvents.save(event.id);
+      if (!response.success) {
+        setBookingMessage({ type: 'error', text: response.message || 'Could not update your saved events.' });
+        return;
+      }
+      setSavedEventKey(isSaved ? null : `${user.id}:${event.id}`);
+    } finally {
+      setSavingEvent(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -317,6 +357,17 @@ export default function EventDetailPage() {
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={toggleSavedEvent}
+              disabled={savingEvent}
+              aria-pressed={isSaved}
+              aria-label={isSaved ? 'Remove event from saved events' : 'Save event'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#ded7ca] bg-white text-xs font-semibold text-[#5c5446] hover:bg-[#faf8f5] disabled:opacity-50"
+            >
+              <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-terracotta text-terracotta' : ''}`} />
+              <span>{isSaved ? 'Saved' : 'Save event'}</span>
+            </button>
+            <button
               onClick={copyShareLink}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#ded7ca] bg-white text-xs font-semibold text-[#5c5446] hover:bg-[#faf8f5] transition-colors"
             >
@@ -364,10 +415,14 @@ export default function EventDetailPage() {
 
             {/* Hero Image */}
             <div className="relative aspect-[16/9] rounded-3xl overflow-hidden shadow-warm border border-[#ded7ca]">
-              <img
-                src={event.coverImage || ''}
+              <EventCoverImage
+                src={event.coverImage}
                 alt={event.title}
-                className="w-full h-full object-cover"
+                label={event.category?.name || 'Eventora experience'}
+                fallbackSrc={event.images?.[0]}
+                categorySlug={event.category?.slug}
+                sizes="(max-width: 1024px) 100vw, 66vw"
+                loading="eager"
               />
             </div>
 
@@ -378,7 +433,7 @@ export default function EventDetailPage() {
                   <Calendar className="w-3.5 h-3.5 text-terracotta" />
                   <span>Date</span>
                 </div>
-                <p className="text-sm font-bold text-forest">{formatDate(event.startDate)}</p>
+                <p className="text-sm font-bold text-forest">{formatDate(event.startDate, { timeZone: event.timezone || 'UTC' })}</p>
               </div>
 
               <div className="space-y-1">
@@ -507,7 +562,9 @@ export default function EventDetailPage() {
                       <option value="1">1 ★☆☆☆☆ — Poor</option>
                     </select>
                   </div>
+                  <label htmlFor="event-review-comment" className="sr-only">Your review</label>
                   <textarea
+                    id="event-review-comment"
                     placeholder="Share your takeaways and experience with future attendees..."
                     value={userComment}
                     onChange={(e) => setUserComment(e.target.value)}

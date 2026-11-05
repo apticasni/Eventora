@@ -7,17 +7,13 @@ import {
   Category,
   ApiResponse,
   PaginatedResponse,
-  DashboardStats,
   Proposal,
   Review,
   UpdateProfileInput,
 } from '@eventora/shared';
+import { getApiBaseUrl } from './apiBase';
 
-const configuredApiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-const normalizedApiBase = configuredApiBase.replace(/\/+$/, '');
-const API_BASE = normalizedApiBase.endsWith('/api')
-  ? normalizedApiBase
-  : `${normalizedApiBase}/api`;
+const API_BASE = getApiBaseUrl(process.env.NEXT_PUBLIC_API_URL);
 
 export interface OrganizerEventSummary {
   id: string;
@@ -60,10 +56,10 @@ async function fetcher<T>(endpoint: string, options: RequestInit = {}): Promise<
     }
 
     return data;
-  } catch (error: any) {
+  } catch {
     return {
       success: false,
-      message: error?.message || 'Network error occurred. Please check backend connection.',
+      message: 'Unable to reach Eventora right now. Check your connection and try again.',
     };
   }
 }
@@ -71,6 +67,7 @@ async function fetcher<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   // Auth
   auth: {
+    googleSignInUrl: `${API_BASE}/auth/google`,
     me: () => fetcher<User>('/auth/me'),
     login: (body: any) => fetcher<{ user: User; token: string }>('/auth/login', {
       method: 'POST',
@@ -81,16 +78,16 @@ export const api = {
       body: JSON.stringify(body),
     }),
     logout: () => fetcher<void>('/auth/logout', { method: 'POST' }),
-    updateProfile: (body: UpdateProfileInput) => fetcher<User>('/auth/profile', {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
     forgotPassword: (email: string) => fetcher<void>('/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
-    resetPassword: (body: any) => fetcher<void>('/auth/reset-password', {
+    resetPassword: (body: { token: string; newPassword: string }) => fetcher<void>('/auth/reset-password', {
       method: 'POST',
+      body: JSON.stringify(body),
+    }),
+    updateProfile: (body: UpdateProfileInput) => fetcher<User>('/auth/profile', {
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
   },
@@ -132,6 +129,33 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
+  },
+
+  savedEvents: {
+    list: () => fetcher<Array<{ id: string; eventId: string; event: Event }>>('/saved-events'),
+    save: (eventId: string) => fetcher<{ id: string; eventId: string }>('/saved-events', {
+      method: 'POST',
+      body: JSON.stringify({ eventId }),
+    }),
+    remove: (eventId: string) => fetcher<void>(`/saved-events/${eventId}`, { method: 'DELETE' }),
+  },
+
+  notifications: {
+    list: (params: { page?: number; limit?: number } = {}) => {
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) searchParams.set(key, String(value));
+      });
+      return fetcher<{
+        notifications: Array<{
+          id: string; type: string; title: string; message: string;
+          link?: string | null; readAt?: string | null; createdAt: string;
+        }>;
+        total: number; unreadCount: number; page: number; totalPages: number;
+      }>(`/notifications?${searchParams.toString()}`);
+    },
+    markRead: (id: string) => fetcher<void>(`/notifications/${id}/read`, { method: 'PATCH' }),
+    markAllRead: () => fetcher<void>('/notifications/read-all', { method: 'POST' }),
   },
 
   // Payments
@@ -190,7 +214,7 @@ export const api = {
   // Tickets & Check-in
   tickets: {
     get: (code: string) => fetcher<Ticket>(`/tickets/${code}`),
-    checkin: (code: string, method: string = 'QR') => fetcher<{ ticket: Ticket }>(`/tickets/${code}/checkin`, {
+    checkin: (code: string, method: 'QR' | 'Manual' = 'QR') => fetcher<{ status: string; ticket: Ticket }>(`/tickets/${encodeURIComponent(code)}/checkin`, {
       method: 'POST',
       body: JSON.stringify({ method }),
     }),
@@ -221,15 +245,25 @@ export const api = {
 
   // Admin
   admin: {
-    dashboard: () => fetcher<DashboardStats>('/admin/dashboard'),
+    dashboard: (params: Record<string, string | number> = {}) => {
+      const sp = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => sp.append(key, String(value)));
+      const query = sp.toString();
+      return fetcher<any>(`/admin/dashboard${query ? `?${query}` : ''}`);
+    },
     users: (params: Record<string, string | number> = {}) => {
       const sp = new URLSearchParams();
       Object.entries(params).forEach(([k, v]) => sp.append(k, String(v)));
       return fetcher<any>(`/admin/users?${sp.toString()}`);
     },
-    updateUserRole: (id: string, role: string) => fetcher<any>(`/admin/users/${id}/role`, {
+    user: (id: string) => fetcher<any>(`/admin/users/${encodeURIComponent(id)}`),
+    updateUserRole: (id: string, role: string, reason: string) => fetcher<any>(`/admin/users/${id}/role`, {
       method: 'PUT',
-      body: JSON.stringify({ role }),
+      body: JSON.stringify({ role, reason }),
+    }),
+    updateUserSuspension: (id: string, suspended: boolean, reason: string) => fetcher<any>(`/admin/users/${id}/suspension`, {
+      method: 'PATCH',
+      body: JSON.stringify({ suspended, reason }),
     }),
     events: (params: Record<string, string | number> = {}) => {
       const sp = new URLSearchParams();
@@ -241,11 +275,98 @@ export const api = {
       Object.entries(params).forEach(([k, v]) => sp.append(k, String(v)));
       return fetcher<any>(`/admin/bookings?${sp.toString()}`);
     },
-    analyticsRegistrations: () => fetcher<any[]>('/admin/analytics/registrations'),
-    analyticsRevenue: () => fetcher<any[]>('/admin/analytics/revenue'),
-    analyticsCategories: () => fetcher<any[]>('/admin/analytics/categories'),
+    updateEventStatus: (id: string, status: string, reason: string) => fetcher<any>(`/admin/events/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, reason }),
+    }),
+    categories: () => fetcher<any[]>('/admin/categories'),
+    createCategory: (body: Record<string, string>) => fetcher<any>('/admin/categories', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+    updateCategory: (id: string, body: Record<string, string>) => fetcher<any>(`/admin/categories/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+    removeCategory: (id: string, reason: string) => fetcher<void>(`/admin/categories/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    }),
+    waitlists: (params: Record<string, string | number> = {}) => {
+      const sp = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => sp.append(k, String(v)));
+      return fetcher<any>(`/admin/waitlists?${sp.toString()}`);
+    },
+    promoteWaitlist: (eventId: string, reason: string) => fetcher<any>('/admin/waitlists/promote', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, reason }),
+    }),
+    removeWaitlist: (id: string, reason: string) => fetcher<any>(`/admin/waitlists/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    }),
+    reviews: (params: Record<string, string | number> = {}) => {
+      const sp = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => sp.append(k, String(v)));
+      return fetcher<any>(`/admin/reviews?${sp.toString()}`);
+    },
+    moderateReview: (id: string, status: string, reason: string) => fetcher<any>(`/admin/reviews/${id}/moderation`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, reason }),
+    }),
+    audit: (params: Record<string, string | number> = {}) => {
+      const sp = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => sp.append(k, String(v)));
+      return fetcher<any>(`/admin/audit?${sp.toString()}`);
+    },
+    systemStatus: () => fetcher<any>('/admin/system-status'),
     checkins: (eventId?: string) => fetcher<any[]>(`/admin/checkins${eventId ? `?eventId=${eventId}` : ''}`),
+    scannerCheckin: (code: string, method: 'QR' | 'Manual' = 'QR') => fetcher<{ status: string; ticket: any }>(`/admin/scanner/tickets/${encodeURIComponent(code)}/checkin`, {
+      method: 'POST',
+      body: JSON.stringify({ method }),
+    }),
     exportBookingsUrl: () => `${API_BASE}/admin/export/bookings`,
+    downloadCsv: async (path: string, filename: string): Promise<{ success: boolean; message?: string }> => {
+      const headers = new Headers();
+      if (typeof window !== 'undefined') {
+        const token = localStorage.getItem('eventora_token');
+        if (token) headers.set('Authorization', `Bearer ${token}`);
+      }
+      try {
+        const response = await fetch(`${API_BASE}${path}`, { headers, credentials: 'include' });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          return { success: false, message: error.message || 'Report export failed.' };
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(objectUrl);
+        return { success: true };
+      } catch {
+        return { success: false, message: 'Unable to reach the report service.' };
+      }
+    },
+  },
+
+  support: {
+    mine: () => fetcher<any[]>('/support/mine'),
+    create: (body: Record<string, string>) => fetcher<any>('/support', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+    adminList: (params: Record<string, string | number> = {}) => {
+      const sp = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => sp.append(key, String(value)));
+      return fetcher<any>(`/support/admin?${sp.toString()}`);
+    },
+    update: (id: string, body: Record<string, string | null>) => fetcher<any>(`/support/admin/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   },
 
   // Proposals
@@ -256,7 +377,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
     adminList: () => fetcher<Proposal[]>('/proposals/admin'),
-    approve: (id: string, adminNotes?: string) => fetcher<any>(`/proposals/${id}/approve`, {
+    approve: (id: string, adminNotes: string) => fetcher<any>(`/proposals/${id}/approve`, {
       method: 'POST',
       body: JSON.stringify({ adminNotes }),
     }),

@@ -31,12 +31,16 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
   try {
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, email: true, role: true, name: true },
+        select: { id: true, email: true, role: true, name: true, suspendedAt: true },
     });
     if (!user) {
       res.status(401).json({ success: false, message: 'Invalid or expired token' });
       return;
     }
+      if (user.suspendedAt) {
+        res.status(403).json({ success: false, message: 'This account has been suspended. Contact support for assistance.' });
+        return;
+      }
 
     req.user = { ...payload, email: user.email, role: user.role, dbUser: user };
     next();
@@ -60,18 +64,35 @@ export function requireRole(...roles: string[]) {
 }
 
 export async function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): Promise<void> {
-  try {
-    let token: string | undefined;
-    if (req.cookies?.token) {
-      token = req.cookies.token;
-    } else if (req.headers.authorization?.startsWith('Bearer ')) {
-      token = req.headers.authorization.slice(7);
-    }
-    if (token) {
-      req.user = verifyToken(token);
-    }
-  } catch {
-    // ignore errors for optional auth
+  let token: string | undefined;
+  if (req.cookies?.token) {
+    token = req.cookies.token;
+  } else if (req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.slice(7);
   }
-  next();
+  if (!token) {
+    next();
+    return;
+  }
+
+  let payload: JwtPayload;
+  try {
+    payload = verifyToken(token);
+  } catch {
+    next();
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, email: true, role: true, name: true, suspendedAt: true },
+    });
+    if (user && !user.suspendedAt) {
+      req.user = { ...payload, email: user.email, role: user.role, dbUser: user };
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
 }

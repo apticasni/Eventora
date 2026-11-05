@@ -59,6 +59,17 @@ export async function confirmPaidBooking(opts: {
       reference: booking.reference,
       eventId: booking.eventId,
     });
+    await tx.inAppNotification.create({
+      data: {
+        userId: booking.userId,
+        type: 'REGISTRATION_CONFIRMED',
+        title: 'Registration confirmed',
+        message: `Your registration for ${booking.event.title} is confirmed. Your ticket is ready.`,
+        link: '/dashboard/bookings',
+        eventId: booking.eventId,
+        key: `booking-confirmed:${booking.id}:${confirmed.updatedAt.toISOString()}`,
+      },
+    });
     return { booking: { ...booking, ...confirmed, status: 'CONFIRMED' as const }, tickets, alreadyConfirmed: false };
   });
 

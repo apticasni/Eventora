@@ -14,18 +14,18 @@ export const LoginSchema = z.object({
 });
 
 export const ForgotPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().email('Invalid email address').max(254),
 });
 
 export const ResetPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  otp: z.string().length(6, 'OTP must be 6 digits'),
+  token: z.string().regex(/^[a-f0-9]{64}$/i, 'Invalid or expired reset link.'),
   newPassword: z.string().min(8, 'Password must be at least 8 characters').max(100),
 });
 
 export const UpdateProfileSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   bio: z.string().max(500).optional(),
+  phone: z.string().trim().max(30).regex(/^[+()\d\s.-]*$/).optional(),
   avatar: z.union([
     z.string().url().refine((value) => !value.startsWith('data:')),
     z.string()
@@ -73,19 +73,31 @@ export const UpdateEventSchema = CreateEventSchema.partial().extend({
 });
 
 export const SearchEventsSchema = z.object({
-  q: z.string().optional(),
-  category: z.string().optional(),
+  q: z.string().max(200).optional(),
+  category: z.string().max(100).optional(),
   format: z.enum(['IN_PERSON', 'ONLINE', 'HYBRID']).optional(),
-  city: z.string().optional(),
-  isFree: z.string().optional(),
-  minPrice: z.string().optional(),
-  maxPrice: z.string().optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
+  city: z.string().max(100).optional(),
+  isFree: z.enum(['true', 'false']).optional(),
+  minPrice: z.string().regex(/^\d+(\.\d+)?$/).optional(),
+  maxPrice: z.string().regex(/^\d+(\.\d+)?$/).optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => !Number.isNaN(Date.parse(value))).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => !Number.isNaN(Date.parse(value))).optional(),
+  available: z.enum(['true', 'false']).optional(),
   sortBy: z.enum(['date', 'popularity', 'price', 'price_desc']).optional().default('date'),
-  page: z.string().optional().default('1'),
-  limit: z.string().optional().default('12'),
+  page: z.string().regex(/^[1-9]\d*$/).optional().default('1'),
+  limit: z.string().regex(/^[1-9]\d*$/).refine((value) => Number(value) <= 50).optional().default('12'),
   status: z.string().optional(),
+}).superRefine((filters, context) => {
+  if (filters.startDate && filters.endDate && filters.startDate > filters.endDate) {
+    context.addIssue({ code: 'custom', message: 'End date must be on or after the start date.', path: ['endDate'] });
+  }
+  if (filters.minPrice && filters.maxPrice && Number(filters.minPrice) > Number(filters.maxPrice)) {
+    context.addIssue({ code: 'custom', message: 'Maximum price must be greater than or equal to minimum price.', path: ['maxPrice'] });
+  }
+});
+
+export const SaveEventSchema = z.object({
+  eventId: z.string().cuid(),
 });
 
 // Booking Schemas

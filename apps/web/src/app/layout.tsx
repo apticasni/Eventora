@@ -2,13 +2,13 @@ import React from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/hooks/useAuth';
-import { Navbar } from '@/components/layout/Navbar';
-import { Footer } from '@/components/layout/Footer';
+import { SiteChrome } from '@/components/layout/SiteChrome';
 
 export const metadata: Metadata = {
   title: 'Eventora — Discover. Connect. Experience.',
   description: 'A sophisticated, editorial event discovery and registration platform for workshops, masterclasses, and gatherings.',
   keywords: ['workshops', 'masterclasses', 'events', 'design', 'technology', 'conferences', 'tickets'],
+  referrer: 'no-referrer',
 };
 
 export default function RootLayout({
@@ -29,9 +29,7 @@ export default function RootLayout({
       </head>
       <body className="flex flex-col min-h-screen text-[#1A3A2A]">
         <AuthProvider>
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <SiteChrome>{children}</SiteChrome>
         </AuthProvider>
       </body>
     </html>

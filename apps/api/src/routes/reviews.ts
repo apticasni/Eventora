@@ -4,6 +4,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
 import { AppError } from '../middleware/errorHandler';
 import { CreateReviewSchema } from '@eventora/shared';
+import { isEventReviewAvailable } from '../lib/eventEligibility';
 
 export const reviewsRouter = Router();
 
@@ -13,7 +14,13 @@ reviewsRouter.post('/', requireAuth, validateBody(CreateReviewSchema), async (re
     const { eventId, rating, comment } = req.body;
     const userId = req.user!.userId;
 
-    // Check if user attended the event (has a confirmed booking)
+    const event = await prisma.event.findUnique({ where: { id: eventId }, select: { endDate: true } });
+    if (!event) throw new AppError(404, 'Event not found.');
+    if (!isEventReviewAvailable(event.endDate)) {
+      throw new AppError(400, 'Reviews are available after the event has ended.');
+    }
+
+    // Review eligibility requires a confirmed registration for a completed event.
     const booking = await prisma.booking.findFirst({
       where: { userId, eventId, status: 'CONFIRMED' },
     });
@@ -35,7 +42,7 @@ reviewsRouter.post('/', requireAuth, validateBody(CreateReviewSchema), async (re
 reviewsRouter.get('/event/:eventId', async (req, res: Response, next) => {
   try {
     const reviews = await prisma.review.findMany({
-      where: { eventId: req.params.eventId },
+      where: { eventId: req.params.eventId, moderationStatus: 'PUBLISHED' },
       orderBy: { createdAt: 'desc' },
       include: { user: { select: { id: true, name: true, avatar: true } } },
     });

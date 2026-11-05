@@ -1,21 +1,40 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
+import { api } from '@/lib/api';
+import { getSafeRedirectPath } from '@/lib/safeRedirect';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/dashboard/bookings';
-  const { login } = useAuth();
+  const redirect = getSafeRedirectPath(searchParams.get('redirect'));
+  const googleSignInUrl = new URL(api.auth.googleSignInUrl);
+  googleSignInUrl.searchParams.set('redirect', redirect);
+  const googleStatus = searchParams.get('google');
+  const { login, refreshUser } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    if (googleStatus === 'cancelled') {
+      return 'Google sign-in was cancelled. You can try again or use your email and password.';
+    }
+    if (googleStatus === 'failed') {
+      return 'Google sign-in could not be completed. Please try again.';
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (googleStatus === 'success') {
+      void refreshUser().then(() => router.replace(redirect));
+    }
+  }, [googleStatus, redirect, refreshUser, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,12 +90,7 @@ function LoginForm() {
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-forest">Password</label>
-              <Link href="/forgot-password" className="text-xs text-terracotta hover:underline font-semibold">
-                Forgot password?
-              </Link>
-            </div>
+            <label className="block text-xs font-bold text-forest mb-1.5">Password</label>
             <div className="relative">
               <Lock className="w-4 h-4 text-[#8c8273] absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -106,20 +120,29 @@ function LoginForm() {
           </button>
         </form>
 
-        {/* Demo accounts are intentionally unavailable in production. */}
-        <div className="pt-4 border-t border-[#f0ede6] space-y-2 text-xs">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-[#8c8273]">
-            Demo accounts unavailable
-          </p>
-          <p className="text-[#71695d]">
-            Demo sign-ins are disabled for this deployment. Register an account or contact an administrator.
-          </p>
+        <div className="relative flex items-center">
+          <div className="flex-1 border-t border-[#e5dfd3]" />
+          <span className="px-3 text-[11px] text-[#8c8273]">OR</span>
+          <div className="flex-1 border-t border-[#e5dfd3]" />
         </div>
+
+        <a
+          href={googleSignInUrl.toString()}
+          className="w-full py-3 rounded-xl border border-[#ded7ca] bg-white hover:bg-[#faf8f5] text-forest font-bold text-sm transition-all flex items-center justify-center gap-3"
+        >
+          <span aria-hidden="true" className="font-bold text-base">G</span>
+          <span>Continue with Google</span>
+        </a>
 
         <div className="text-center text-xs text-[#71695d]">
           Don&apos;t have an account yet?{' '}
           <Link href="/register" className="font-bold text-forest hover:text-terracotta underline">
             Register now
+          </Link>
+        </div>
+        <div className="text-center text-xs">
+          <Link href="/forgot-password" className="font-semibold text-forest hover:text-terracotta underline">
+            Forgot your password?
           </Link>
         </div>
       </div>

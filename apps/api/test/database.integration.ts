@@ -97,7 +97,7 @@ async function main() {
   assert.equal(login.status, 200, `login failed: ${login.body.message}`);
   assert.ok(login.body.data?.token, 'login should return an authentication token');
 
-  const listing = await request('/api/events?limit=100');
+  const listing = await request('/api/events?limit=50');
   assert.equal(listing.status, 200, `event listing failed: ${listing.body.message}`);
   assert.ok(
     listing.body.data?.items?.some((item: { id: string }) => item.id === event.id),

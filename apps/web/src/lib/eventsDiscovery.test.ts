@@ -13,7 +13,7 @@ describe('events discovery state', () => {
     expect(eventsDiscoveryStateFromResponse({
       success: true,
       data: { items: [], total: 0, page: 1, limit: 12, totalPages: 0 },
-    })).toEqual({ status: 'success', events: [] });
+    })).toEqual({ status: 'success', events: [], total: 0, page: 1, totalPages: 0 });
   });
 
   it('exposes API errors instead of treating them as empty results', () => {

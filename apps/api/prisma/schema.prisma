@@ -54,6 +54,28 @@ enum WaitlistStatus {
   WITHDRAWN
 }
 
+enum ReviewModerationStatus {
+  PUBLISHED
+  HIDDEN
+  REMOVED
+}
+
+enum SupportRequestCategory {
+  BOOKING
+  PAYMENT
+  EVENT
+  ACCOUNT
+  OTHER
+}
+
+enum SupportRequestStatus {
+  NEW
+  IN_PROGRESS
+  WAITING_ON_USER
+  RESOLVED
+  CLOSED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -62,9 +84,12 @@ model User {
   role         Role     @default(ATTENDEE)
   avatar       String?
   bio          String?
+  phone        String?
   interests    String[] @default([])
   googleId     String?  @unique
   isVerified   Boolean  @default(false)
+  suspendedAt  DateTime?
+  suspensionReason String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -74,8 +99,15 @@ model User {
   waitlistEntries   WaitlistEntry[]
   proposals         Proposal[]
   certificates      Certificate[]
-  passwordResetOTPs PasswordResetOTP[]
+  passwordResetTokens PasswordResetToken[]
   checkInsPerformed CheckIn[]        @relation("CheckInStaff")
+  savedEvents       SavedEvent[]
+  notifications     InAppNotification[]
+  auditLogs         AuditLog[]        @relation("AuditActor")
+  moderatedReviews  Review[]          @relation("ReviewModerator")
+  supportRequests   SupportRequest[]  @relation("SupportRequester")
+  assignedSupport   SupportRequest[]  @relation("SupportAssignee")
+  supportNotes      SupportNote[]     @relation("SupportNoteAuthor")
 
   @@index([email])
   @@index([role])
@@ -147,6 +179,8 @@ model Event {
   waitlistEntries WaitlistEntry[]
   certificates    Certificate[]
   checkIns        CheckIn[]
+  savedBy         SavedEvent[]
+  supportRequests SupportRequest[]
 
   @@index([status])
   @@index([categoryId])
@@ -171,6 +205,7 @@ model Booking {
 
   payment  Payment?
   tickets  Ticket[]
+  supportRequests SupportRequest[]
 
   cancelledAt        DateTime?
   cancellationReason String?
@@ -267,11 +302,18 @@ model Review {
   event     Event    @relation(fields: [eventId], references: [id])
   rating    Int
   comment   String?
+  moderationStatus ReviewModerationStatus @default(PUBLISHED)
+  moderationReason String?
+  moderatedAt DateTime?
+  moderatedById String?
+  moderatedBy User? @relation("ReviewModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([userId, eventId])
   @@index([eventId])
+  @@index([moderationStatus, createdAt])
+  @@index([moderatedById])
 }
 
 model Certificate {
@@ -300,14 +342,105 @@ model CheckIn {
   @@index([eventId])
 }
 
-model PasswordResetOTP {
+model PasswordResetToken {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  otp       String
+  tokenHash String
+  attempts  Int      @default(0)
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([tokenHash])
+  @@map("PasswordResetOTP")
+}
+
+model SavedEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, eventId])
+  @@index([userId, createdAt])
+}
+
+model InAppNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  link      String?
+  eventId   String?
+  key       String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String
+  reason     String
+  beforeData Json?
+  afterData  Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([action, createdAt])
+}
+
+model SupportRequest {
+  id             String                @id @default(cuid())
+  reference      String                @unique @default(cuid())
+  requesterId   String
+  requester      User                  @relation("SupportRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  subject        String
+  description    String
+  category       SupportRequestCategory @default(OTHER)
+  status         SupportRequestStatus   @default(NEW)
+  eventId        String?
+  event          Event?                @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  bookingId      String?
+  booking        Booking?              @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  assignedAdminId String?
+  assignedAdmin  User?                 @relation("SupportAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  resolvedAt     DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  notes          SupportNote[]
+
+  @@index([status, createdAt])
+  @@index([requesterId, createdAt])
+  @@index([assignedAdminId, status])
+  @@index([eventId])
+  @@index([bookingId])
+}
+
+model SupportNote {
+  id          String         @id @default(cuid())
+  requestId   String
+  request     SupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  authorId    String?
+  author      User?          @relation("SupportNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  body        String
+  internal    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+
+  @@index([requestId, createdAt])
 }

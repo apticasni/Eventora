@@ -1,131 +1,105 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, CheckCircle, Lock } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Lock, KeyRound, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
+
+function subscribeToResetToken(onChange: () => void) {
+  onChange();
+  return () => undefined;
+}
+
+function getResetTokenSnapshot() {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.hash.slice(1)).get('token') || '';
+}
+
+function getServerResetTokenSnapshot() {
+  return '';
+}
 
 function ResetPasswordForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const initialEmail = searchParams.get('email') || '';
-
-  const [email, setEmail] = useState(initialEmail);
-  const [otp, setOtp] = useState('');
+  const token = useSyncExternalStore(
+    subscribeToResetToken,
+    getResetTokenSnapshot,
+    getServerResetTokenSnapshot,
+  );
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+  useEffect(() => {
+    if (window.location.hash) window.history.replaceState(null, '', '/reset-password');
+  }, []);
 
-    const res = await api.auth.resetPassword({ email, otp, newPassword });
-    if (res.success) {
-      setSuccess(true);
-      setTimeout(() => router.push('/login'), 2000);
-    } else {
-      setError(res.message || 'Verification failed. Please check the OTP.');
-      setLoading(false);
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    const result = await api.auth.resetPassword({ token, newPassword });
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message || 'This reset link is invalid or has expired. Request a new one.');
+      return;
     }
+    setSuccess(true);
+    window.setTimeout(() => router.replace('/login'), 1800);
   };
 
   return (
-    <div className="min-h-[75vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white rounded-3xl border border-[#ded7ca] p-8 sm:p-10 shadow-warm-lg space-y-6">
-        <div className="text-center space-y-2">
-          <h2 className="font-serif text-3xl font-bold text-forest">Set New Password</h2>
-          <p className="text-xs text-[#71695d]">
-            Enter the 6-digit verification code and your new password.
-          </p>
+    <div className="flex min-h-[75vh] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-6 rounded-3xl border border-[#ded7ca] bg-white p-8 shadow-warm-lg sm:p-10">
+        <div className="space-y-2 text-center">
+          <h1 className="font-serif text-3xl font-bold text-forest">Choose a new password</h1>
+          <p className="text-sm text-[#71695d]">Your reset link can be used once and expires after 15 minutes.</p>
         </div>
 
-        {error && (
-          <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 flex items-center gap-2 font-medium">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
         {success ? (
-          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-center space-y-2 text-emerald-900">
-            <CheckCircle className="w-8 h-8 mx-auto text-emerald-600" />
-            <p className="text-sm font-bold">Password Reset Successful!</p>
-            <p className="text-xs">Redirecting to login...</p>
+          <div className="space-y-3 text-center" role="status">
+            <CheckCircle className="mx-auto h-9 w-9 text-emerald-700" aria-hidden="true" />
+            <p className="text-sm font-semibold text-forest">Password updated. Returning to sign in…</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-forest mb-1.5">Email Address</label>
+            <label className="block text-sm font-semibold text-forest" htmlFor="new-password">New password</label>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8c8273]" aria-hidden="true" />
               <input
-                type="email"
+                id="new-password"
+                type="password"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-[#ded7ca] bg-[#faf8f5] focus:bg-white text-xs sm:text-sm font-medium"
+                minLength={8}
+                maxLength={100}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                className="w-full rounded-xl border border-[#ded7ca] bg-[#faf8f5] py-3 pl-10 pr-4 text-sm focus:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-forest"
               />
             </div>
-
-            <div>
-              <label className="block text-xs font-bold text-forest mb-1.5">6-Digit OTP</label>
-              <div className="relative">
-                <KeyRound className="w-4 h-4 text-[#8c8273] absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  required
-                  maxLength={6}
-                  placeholder="123456"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#ded7ca] bg-[#faf8f5] focus:bg-white text-xs sm:text-sm font-bold tracking-widest"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-forest mb-1.5">New Password</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-[#8c8273] absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="password"
-                  required
-                  minLength={8}
-                  placeholder="••••••••"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#ded7ca] bg-[#faf8f5] focus:bg-white text-xs sm:text-sm font-medium"
-                />
-              </div>
-            </div>
-
+            {!token && <p className="text-sm text-red-700" role="alert">This reset link is invalid or has expired. Request a new one.</p>}
+            {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-3.5 rounded-xl bg-forest hover:bg-forest-light text-white font-bold text-sm shadow-warm transition-all flex items-center justify-center gap-2"
+              disabled={loading || !token}
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-forest px-4 py-3 text-sm font-bold text-white hover:bg-forest-light disabled:opacity-60"
             >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <span>Save Password & Sign In</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
+              {loading ? 'Updating…' : <>Update password <ArrowRight className="h-4 w-4" aria-hidden="true" /></>}
             </button>
           </form>
         )}
+
+        <div className="text-center text-sm">
+          <Link href="/forgot-password" className="font-semibold text-forest hover:text-terracotta">Request another reset link</Link>
+        </div>
       </div>
     </div>
   );
 }
 
 export default function ResetPasswordPage() {
-  return (
-    <Suspense fallback={<div className="py-24 text-center font-serif text-forest">Loading reset...</div>}>
-      <ResetPasswordForm />
-    </Suspense>
-  );
+  return <ResetPasswordForm />;
 }

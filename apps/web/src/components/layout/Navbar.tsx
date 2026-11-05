@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Avatar } from '@/components/ui/Avatar';
 import { eventNavigationLinks } from '@/lib/eventsNavigation';
+import { api } from '@/lib/api';
 import {
   Compass,
   Calendar,
@@ -17,7 +18,9 @@ import {
   Menu,
   X,
   Ticket,
-  ChevronDown
+  ChevronDown,
+  Bell,
+  Bookmark,
 } from 'lucide-react';
 
 export function Navbar() {
@@ -25,6 +28,18 @@ export function Navbar() {
   const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [unreadState, setUnreadState] = useState<{ userId: string; count: number } | null>(null);
+  const userId = user?.id;
+  const unreadCount = userId && unreadState?.userId === userId ? unreadState.count : 0;
+
+  useEffect(() => {
+    let active = true;
+    if (!userId) return () => { active = false; };
+    api.notifications.list({ limit: 1 }).then((response) => {
+      if (active && response.success && response.data) setUnreadState({ userId, count: response.data.unreadCount });
+    });
+    return () => { active = false; };
+  }, [userId]);
 
   return (
     <header className="sticky top-0 z-50 bg-[#faf8f5]/90 backdrop-blur-md border-b border-[#e5dfd3] transition-all">
@@ -83,6 +98,9 @@ export function Navbar() {
               <div className="relative">
                 <button
                   onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                  aria-expanded={profileDropdownOpen}
+                  aria-haspopup="true"
+                  aria-label="Open account menu"
                   className="flex items-center gap-3 p-1.5 pr-3 rounded-full border border-[#ded7ca] hover:border-[#c5bcae] bg-[#fbfaf8] hover:bg-white shadow-sm transition-all focus:outline-none"
                 >
                   <Avatar
@@ -101,8 +119,10 @@ export function Navbar() {
 
                 {profileDropdownOpen && (
                   <>
-                    <div
+                    <button
+                      type="button"
                       className="fixed inset-0 z-10"
+                      aria-label="Close account menu"
                       onClick={() => setProfileDropdownOpen(false)}
                     />
                     <div className="absolute right-0 mt-2 w-56 bg-[#fdfcfb] rounded-xl shadow-warm-lg border border-[#e5dfd3] py-2 z-20 animate-in fade-in zoom-in-95 duration-150">
@@ -127,6 +147,24 @@ export function Navbar() {
                       >
                         <Calendar className="w-4 h-4 text-forest" />
                         Waitlist Claims
+                      </Link>
+
+                      <Link
+                        href="/dashboard/saved-events"
+                        onClick={() => setProfileDropdownOpen(false)}
+                        className="flex items-center gap-2.5 px-4 py-2 text-sm text-[#40382b] hover:bg-[#f5f1e8] hover:text-forest transition-colors"
+                      >
+                        <Bookmark className="w-4 h-4 text-forest" />
+                        Saved Events
+                      </Link>
+
+                      <Link
+                        href="/dashboard/notifications"
+                        onClick={() => setProfileDropdownOpen(false)}
+                        className="flex items-center justify-between gap-2.5 px-4 py-2 text-sm text-[#40382b] hover:bg-[#f5f1e8] hover:text-forest transition-colors"
+                      >
+                        <span className="flex items-center gap-2.5"><Bell className="w-4 h-4 text-forest" />Notifications</span>
+                        {unreadCount > 0 && <span aria-label={`${unreadCount} unread`} className="rounded-full bg-terracotta px-2 py-0.5 text-[10px] font-bold text-white">{unreadCount}</span>}
                       </Link>
 
                       {user.role === 'ORGANIZER' && (
@@ -243,6 +281,20 @@ export function Navbar() {
                   className="block px-3 py-2 text-sm text-[#40382b] rounded-lg hover:bg-[#f2ede4]"
                 >
                   My Tickets & Bookings
+                </Link>
+                <Link
+                  href="/dashboard/saved-events"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-sm text-[#40382b] rounded-lg hover:bg-[#f2ede4]"
+                >
+                  Saved Events
+                </Link>
+                <Link
+                  href="/dashboard/notifications"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-between px-3 py-2 text-sm text-[#40382b] rounded-lg hover:bg-[#f2ede4]"
+                >
+                  Notifications {unreadCount > 0 && <span className="rounded-full bg-terracotta px-2 py-0.5 text-xs font-bold text-white">{unreadCount}</span>}
                 </Link>
                 {user.role === 'ADMIN' && (
                   <Link

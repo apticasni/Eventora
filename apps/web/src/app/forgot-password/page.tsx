@@ -1,89 +1,74 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { ArrowLeft, ArrowRight, CheckCircle, Mail } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Mail, ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react';
+
+const GENERIC_RESPONSE = 'If an account exists for that address, password-reset instructions will be sent.';
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setLoading(true);
-    await api.auth.forgotPassword(email);
+    setError('');
+    const result = await api.auth.forgotPassword(email);
     setLoading(false);
-    setSubmitted(true);
+    if (result.success) {
+      setSubmitted(true);
+    } else {
+      setError('We could not submit your request right now. Please try again.');
+    }
   };
 
   return (
-    <div className="min-h-[75vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white rounded-3xl border border-[#ded7ca] p-8 sm:p-10 shadow-warm-lg space-y-6">
-        <div className="text-center space-y-2">
-          <h2 className="font-serif text-3xl font-bold text-forest">Reset Password</h2>
-          <p className="text-xs text-[#71695d]">
-            Enter your email to receive a six-digit verification OTP.
-          </p>
+    <div className="flex min-h-[75vh] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-6 rounded-3xl border border-[#ded7ca] bg-white p-8 shadow-warm-lg sm:p-10">
+        <div className="space-y-2 text-center">
+          <h1 className="font-serif text-3xl font-bold text-forest">Reset your password</h1>
+          <p className="text-sm text-[#71695d]">Enter the email address associated with your account.</p>
         </div>
 
         {submitted ? (
-          <div className="space-y-4 text-center">
-            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto">
-              <CheckCircle className="w-6 h-6" />
-            </div>
-            <p className="text-xs text-[#40382b]">
-              If an account with <strong>{email}</strong> exists, we have dispatched a 6-digit OTP code to your inbox.
-            </p>
-            <Link
-              href={`/reset-password?email=${encodeURIComponent(email)}`}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-forest text-white rounded-xl text-xs font-bold"
-            >
-              <span>Enter 6-Digit OTP</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+          <div className="space-y-3 text-center" role="status">
+            <CheckCircle className="mx-auto h-9 w-9 text-emerald-700" aria-hidden="true" />
+            <p className="text-sm text-[#40382b]">{GENERIC_RESPONSE}</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-forest mb-1.5">Email Address</label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-[#8c8273] absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#ded7ca] bg-[#faf8f5] focus:bg-white focus:outline-none text-xs sm:text-sm font-medium"
-                />
-              </div>
+            <label className="block text-sm font-semibold text-forest" htmlFor="recovery-email">Email address</label>
+            <div className="relative">
+              <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8c8273]" aria-hidden="true" />
+              <input
+                id="recovery-email"
+                type="email"
+                required
+                maxLength={254}
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="w-full rounded-xl border border-[#ded7ca] bg-[#faf8f5] py-3 pl-10 pr-4 text-sm focus:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-forest"
+              />
             </div>
-
+            {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 rounded-xl bg-forest hover:bg-forest-light text-white font-bold text-sm shadow-warm transition-all flex items-center justify-center gap-2"
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-forest px-4 py-3 text-sm font-bold text-white hover:bg-forest-light disabled:opacity-60"
             >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <span>Send Reset OTP</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
+              {loading ? 'Sending…' : <>Send reset link <ArrowRight className="h-4 w-4" aria-hidden="true" /></>}
             </button>
           </form>
         )}
 
-        <div className="text-center pt-2">
-          <Link href="/login" className="inline-flex items-center gap-1.5 text-xs font-semibold text-forest hover:text-terracotta">
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Return to Sign In</span>
+        <div className="text-center">
+          <Link href="/login" className="inline-flex items-center gap-2 text-sm font-semibold text-forest hover:text-terracotta">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Return to sign in
           </Link>
         </div>
       </div>

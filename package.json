@@ -11,6 +11,7 @@
     "db:migrate": "npm run db:migrate --workspace=apps/api",
     "db:migrate:dev": "npm run db:migrate:dev --workspace=apps/api",
     "db:seed": "npm run db:seed --workspace=apps/api",
+    "db:seed-demo-users": "npm run db:seed-demo-users --workspace=apps/api --",
     "db:generate": "npm run db:generate --workspace=apps/api",
     "test": "npm run test --workspace=apps/api",
     "lint": "npm run lint --workspace=apps/web"
